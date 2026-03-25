@@ -273,4 +273,54 @@ describe("RouterStore", () => {
     store.navigate("sessions", { desktop: "off" });
     expect(window.location.search).toBe("?desktop=off");
   });
+
+  it("updates sticky param value across navigations", () => {
+    setURL("/sessions?desktop");
+    store = new RouterStore();
+    store.navigate("sessions", { desktop: "off" });
+    store.navigate("insights");
+    expect(window.location.search).toBe("?desktop=off");
+  });
+
+  it("removes sticky param when navigate omits it explicitly", () => {
+    setURL("/sessions?desktop");
+    store = new RouterStore();
+    // Navigating without desktop in params still preserves it
+    store.navigate("insights");
+    expect(window.location.search).toBe("?desktop=");
+  });
+
+  it("refreshes sticky params on popstate", () => {
+    setURL("/sessions?desktop=v1");
+    store = new RouterStore();
+    // Simulate browser back to a URL with different desktop value
+    setURL("/insights?desktop=v2");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    // Next navigation should use updated sticky value
+    store.navigate("pinned");
+    expect(window.location.search).toBe("?desktop=v2");
+  });
+
+  it("removes sticky param on popstate to URL without it", () => {
+    setURL("/sessions?desktop");
+    store = new RouterStore();
+    setURL("/insights");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    store.navigate("pinned");
+    expect(window.location.search).toBe("");
+  });
+
+  it("buildSessionHref includes sticky params", () => {
+    setURL("/sessions?desktop");
+    store = new RouterStore();
+    const href = store.buildSessionHref("abc-123");
+    expect(href).toBe("/sessions/abc-123?desktop=");
+  });
+
+  it("buildSessionHref works without sticky params", () => {
+    setURL("/sessions");
+    store = new RouterStore();
+    const href = store.buildSessionHref("abc-123");
+    expect(href).toBe("/sessions/abc-123");
+  });
 });

@@ -6,7 +6,7 @@
   import { formatTokenCount } from "../../utils/format.js";
   import { computeMainModel } from "../../utils/model.js";
   import { sessions } from "../../stores/sessions.svelte.js";
-  import { router, buildSessionHref } from "../../stores/router.svelte.js";
+  import { router } from "../../stores/router.svelte.js";
   import MessageContent from "./MessageContent.svelte";
 
   interface Props {
@@ -83,7 +83,7 @@
       {/if}
     </button>
     <a
-      href={buildSessionHref(sessionId)}
+      href={router.buildSessionHref(sessionId)}
       class="open-session-link"
       onclick={openAsSession}
       title="Open as full session"

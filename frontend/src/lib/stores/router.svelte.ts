@@ -22,10 +22,6 @@ export function getBasePath(): string {
   return href.replace(/\/+$/, "");
 }
 
-/** Build a full URL path for a session, respecting basePath. */
-export function buildSessionHref(id: string): string {
-  return `${getBasePath()}/sessions/${encodeURIComponent(id)}`;
-}
 
 export function parsePath(): {
   route: Route;
@@ -87,6 +83,7 @@ export class RouterStore {
       this.route = parsed.route;
       this.params = parsed.params;
       this.sessionId = parsed.sessionId;
+      this.#refreshSticky(parsed.params);
     };
     window.addEventListener("popstate", this.#onPopState);
   }
@@ -98,6 +95,16 @@ export class RouterStore {
     );
   }
 
+  #refreshSticky(params: Record<string, string>) {
+    for (const key of STICKY_PARAMS) {
+      if (key in params) {
+        this.#stickyParams[key] = params[key]!;
+      } else {
+        delete this.#stickyParams[key];
+      }
+    }
+  }
+
   #buildUrl(
     path: string,
     params: Record<string, string> = {},
@@ -107,6 +114,13 @@ export class RouterStore {
     const qs = new URLSearchParams(merged).toString();
     const full = basePath + path;
     return qs ? `${full}?${qs}` : full;
+  }
+
+  /** Build an href for a session link (includes sticky params). */
+  buildSessionHref(id: string): string {
+    return this.#buildUrl(
+      `/sessions/${encodeURIComponent(id)}`,
+    );
   }
 
   navigate(
@@ -123,6 +137,7 @@ export class RouterStore {
     this.route = route;
     this.params = params;
     this.sessionId = null;
+    this.#refreshSticky(params);
     window.history.pushState(null, "", url);
     return true;
   }
@@ -138,6 +153,7 @@ export class RouterStore {
     this.route = "sessions";
     this.params = params;
     this.sessionId = id;
+    this.#refreshSticky(params);
     window.history.pushState(null, "", url);
   }
 
@@ -148,6 +164,7 @@ export class RouterStore {
     this.route = "sessions";
     this.params = params;
     this.sessionId = null;
+    this.#refreshSticky(params);
     window.history.pushState(null, "", url);
   }
 
@@ -158,6 +175,7 @@ export class RouterStore {
       : `/${this.route}`;
     const url = this.#buildUrl(path, params);
     this.params = params;
+    this.#refreshSticky(params);
     window.history.replaceState(null, "", url);
   }
 }
