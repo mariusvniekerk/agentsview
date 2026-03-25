@@ -28,11 +28,23 @@ describe("TopSessions", () => {
       .mockImplementation(() => {});
   });
 
+  let savedLoading: typeof analytics.loading;
+  let savedErrors: typeof analytics.errors;
+
+  beforeEach(() => {
+    savedLoading = { ...analytics.loading };
+    savedErrors = { ...analytics.errors };
+  });
+
   afterEach(() => {
     cacheSpy.mockRestore();
     navSpy.mockRestore();
     analytics.includeOneShot = false;
     analytics.topSessions = null;
+    // @ts-ignore
+    analytics.loading = savedLoading;
+    // @ts-ignore
+    analytics.errors = savedErrors;
     sessions.filters.includeOneShot = false;
     window.history.replaceState(null, "", "/");
   });
