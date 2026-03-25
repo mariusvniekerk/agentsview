@@ -83,7 +83,7 @@ export class RouterStore {
       this.route = parsed.route;
       this.params = parsed.params;
       this.sessionId = parsed.sessionId;
-      this.#refreshSticky(parsed.params);
+      this.#replaceSticky(parsed.params);
     };
     window.addEventListener("popstate", this.#onPopState);
   }
@@ -95,7 +95,17 @@ export class RouterStore {
     );
   }
 
-  #refreshSticky(params: Record<string, string>) {
+  /** Update sticky params that are explicitly present in params. */
+  #updateSticky(params: Record<string, string>) {
+    for (const key of STICKY_PARAMS) {
+      if (key in params) {
+        this.#stickyParams[key] = params[key]!;
+      }
+    }
+  }
+
+  /** Full replace of sticky state from complete URL params (popstate). */
+  #replaceSticky(params: Record<string, string>) {
     for (const key of STICKY_PARAMS) {
       if (key in params) {
         this.#stickyParams[key] = params[key]!;
@@ -137,7 +147,7 @@ export class RouterStore {
     this.route = route;
     this.params = params;
     this.sessionId = null;
-    this.#refreshSticky(params);
+    this.#updateSticky(params);
     window.history.pushState(null, "", url);
     return true;
   }
@@ -153,7 +163,7 @@ export class RouterStore {
     this.route = "sessions";
     this.params = params;
     this.sessionId = id;
-    this.#refreshSticky(params);
+    this.#updateSticky(params);
     window.history.pushState(null, "", url);
   }
 
@@ -164,7 +174,7 @@ export class RouterStore {
     this.route = "sessions";
     this.params = params;
     this.sessionId = null;
-    this.#refreshSticky(params);
+    this.#updateSticky(params);
     window.history.pushState(null, "", url);
   }
 
@@ -175,7 +185,7 @@ export class RouterStore {
       : `/${this.route}`;
     const url = this.#buildUrl(path, params);
     this.params = params;
-    this.#refreshSticky(params);
+    this.#updateSticky(params);
     window.history.replaceState(null, "", url);
   }
 }

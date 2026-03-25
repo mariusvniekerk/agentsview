@@ -282,11 +282,12 @@ describe("RouterStore", () => {
     expect(window.location.search).toBe("?desktop=off");
   });
 
-  it("removes sticky param when navigate omits it explicitly", () => {
+  it("preserves sticky param across two consecutive navigations", () => {
     setURL("/sessions?desktop");
     store = new RouterStore();
-    // Navigating without desktop in params still preserves it
     store.navigate("insights");
+    expect(window.location.search).toBe("?desktop=");
+    store.navigate("pinned");
     expect(window.location.search).toBe("?desktop=");
   });
 
