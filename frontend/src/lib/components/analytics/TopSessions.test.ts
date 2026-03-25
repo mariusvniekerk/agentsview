@@ -5,6 +5,8 @@ import {
   expect,
   vi,
   afterEach,
+  beforeEach,
+  type MockInstance,
 } from "vitest";
 import { mount, unmount, tick } from "svelte";
 // @ts-ignore
@@ -14,9 +16,25 @@ import { sessions } from "../../stores/sessions.svelte.js";
 import { router } from "../../stores/router.svelte.js";
 
 describe("TopSessions", () => {
+  let cacheSpy: MockInstance;
+  let navSpy: MockInstance;
+
+  beforeEach(() => {
+    cacheSpy = vi
+      .spyOn(sessions, "invalidateFilterCaches")
+      .mockImplementation(() => {});
+    navSpy = vi
+      .spyOn(router, "navigateToSession")
+      .mockImplementation(() => {});
+  });
+
   afterEach(() => {
+    cacheSpy.mockRestore();
+    navSpy.mockRestore();
     analytics.includeOneShot = false;
+    analytics.topSessions = null;
     sessions.filters.includeOneShot = false;
+    window.history.replaceState(null, "", "/");
   });
 
   function mountWithData() {
@@ -33,69 +51,68 @@ describe("TopSessions", () => {
       ],
     };
     // @ts-ignore — loading is reactive state
-    analytics.loading = { ...analytics.loading, topSessions: false };
+    analytics.loading = {
+      ...analytics.loading,
+      topSessions: false,
+    };
     // @ts-ignore
-    analytics.errors = { ...analytics.errors, topSessions: null };
+    analytics.errors = {
+      ...analytics.errors,
+      topSessions: null,
+    };
 
     return mount(TopSessions, { target: document.body });
   }
 
-  it("sets includeOneShot filter on click when analytics has it enabled", async () => {
-    analytics.includeOneShot = true;
-    const component = mountWithData();
-    await tick();
-
-    const spy = vi.spyOn(sessions, "invalidateFilterCaches");
-    const navSpy = vi.spyOn(router, "navigateToSession");
-
+  function clickRow() {
     const row = document.querySelector(".session-row");
     expect(row).toBeTruthy();
     row!.dispatchEvent(
       new MouseEvent("click", { bubbles: true }),
     );
+  }
+
+  it("sets filter and navigates when analytics includeOneShot is enabled", async () => {
+    analytics.includeOneShot = true;
+    const component = mountWithData();
+    await tick();
+
+    clickRow();
     await tick();
 
     expect(sessions.filters.includeOneShot).toBe(true);
-    expect(spy).toHaveBeenCalledOnce();
+    expect(cacheSpy).toHaveBeenCalledOnce();
     expect(navSpy).toHaveBeenCalledWith("sess-1");
 
-    spy.mockRestore();
-    navSpy.mockRestore();
     unmount(component);
   });
 
-  it("skips cache invalidation when filter already set", async () => {
+  it("skips invalidation but still navigates when filter already set", async () => {
     analytics.includeOneShot = true;
     sessions.filters.includeOneShot = true;
     const component = mountWithData();
     await tick();
 
-    const spy = vi.spyOn(sessions, "invalidateFilterCaches");
-
-    const row = document.querySelector(".session-row");
-    row!.dispatchEvent(
-      new MouseEvent("click", { bubbles: true }),
-    );
+    clickRow();
     await tick();
 
-    expect(spy).not.toHaveBeenCalled();
+    expect(cacheSpy).not.toHaveBeenCalled();
+    expect(navSpy).toHaveBeenCalledWith("sess-1");
 
-    spy.mockRestore();
     unmount(component);
   });
 
-  it("does not set filter when analytics includeOneShot is off", async () => {
+  it("navigates without setting filter when analytics includeOneShot is off", async () => {
     analytics.includeOneShot = false;
     const component = mountWithData();
     await tick();
 
-    const row = document.querySelector(".session-row");
-    row!.dispatchEvent(
-      new MouseEvent("click", { bubbles: true }),
-    );
+    clickRow();
     await tick();
 
     expect(sessions.filters.includeOneShot).toBe(false);
+    expect(cacheSpy).not.toHaveBeenCalled();
+    expect(navSpy).toHaveBeenCalledWith("sess-1");
 
     unmount(component);
   });
