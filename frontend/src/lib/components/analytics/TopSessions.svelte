@@ -1,6 +1,5 @@
 <script lang="ts">
   import { analytics } from "../../stores/analytics.svelte.js";
-  import { sessions } from "../../stores/sessions.svelte.js";
   import { router } from "../../stores/router.svelte.js";
 
   function truncate(text: string, max: number): string {
@@ -18,7 +17,6 @@
 
   function handleSessionClick(id: string) {
     router.navigateToSession(id);
-    sessions.selectSession(id);
   }
 </script>
 

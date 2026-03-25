@@ -242,8 +242,10 @@
     const msgs = messages.messages;
     untrack(() => {
       if (pending !== -1 || loading || msgs.length === 0) return;
+      const target = ui.pendingScrollSession;
+      if (target !== null && target !== messages.sessionId) return;
       const lastOrdinal = msgs[msgs.length - 1]!.ordinal;
-      ui.scrollToOrdinal(lastOrdinal, ui.pendingScrollSession ?? undefined);
+      ui.scrollToOrdinal(lastOrdinal, target ?? undefined);
     });
   });
 
