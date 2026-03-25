@@ -83,16 +83,19 @@
   }
 
 
-  let copiedLink = $state(false);
+  let copiedLinkId = $state("");
 
   async function copySessionLink() {
     if (!session) return;
-    const href = router.buildSessionHref(session.id);
+    const id = session.id;
+    const href = router.buildSessionHref(id);
     const url = window.location.origin + href;
     const ok = await copyToClipboard(url);
     if (!ok) return;
-    copiedLink = true;
-    setTimeout(() => { copiedLink = false; }, 1500);
+    copiedLinkId = id;
+    setTimeout(() => {
+      if (copiedLinkId === id) copiedLinkId = "";
+    }, 1500);
   }
 
   function toggleMenu() {
@@ -473,12 +476,12 @@
       <div class="actions-wrapper">
         <button
           class="link-btn"
-          class:link-btn--copied={copiedLink}
+          class:link-btn--copied={copiedLinkId === session?.id}
           title="Copy link to session"
           onclick={copySessionLink}
           aria-label="Copy link to session"
         >
-          {#if copiedLink}
+          {#if copiedLinkId === session?.id}
             <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
               <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
             </svg>
