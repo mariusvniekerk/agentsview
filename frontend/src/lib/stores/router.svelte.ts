@@ -43,10 +43,14 @@ export function parsePath(): {
     ? (routeStr as Route)
     : DEFAULT_ROUTE;
 
-  const sessionId =
-    route === "sessions" && segments.length >= 2
-      ? decodeURIComponent(segments[1]!)
-      : null;
+  let sessionId: string | null = null;
+  if (route === "sessions" && segments.length >= 2) {
+    try {
+      sessionId = decodeURIComponent(segments[1]!);
+    } catch {
+      sessionId = segments[1]!;
+    }
+  }
 
   const params = Object.fromEntries(
     new URLSearchParams(window.location.search),
@@ -144,10 +148,10 @@ export class RouterStore {
     ) {
       return false;
     }
-    this.route = route;
-    this.params = params;
-    this.sessionId = null;
     this.#updateSticky(params);
+    this.route = route;
+    this.params = { ...this.#stickyParams, ...params };
+    this.sessionId = null;
     window.history.pushState(null, "", url);
     return true;
   }
@@ -160,10 +164,10 @@ export class RouterStore {
       `/sessions/${encodeURIComponent(id)}`,
       params,
     );
-    this.route = "sessions";
-    this.params = params;
-    this.sessionId = id;
     this.#updateSticky(params);
+    this.route = "sessions";
+    this.params = { ...this.#stickyParams, ...params };
+    this.sessionId = id;
     window.history.pushState(null, "", url);
   }
 
@@ -171,10 +175,10 @@ export class RouterStore {
     params: Record<string, string> = {},
   ) {
     const url = this.#buildUrl("/sessions", params);
-    this.route = "sessions";
-    this.params = params;
-    this.sessionId = null;
     this.#updateSticky(params);
+    this.route = "sessions";
+    this.params = { ...this.#stickyParams, ...params };
+    this.sessionId = null;
     window.history.pushState(null, "", url);
   }
 
@@ -184,8 +188,8 @@ export class RouterStore {
       ? `/sessions/${encodeURIComponent(this.sessionId)}`
       : `/${this.route}`;
     const url = this.#buildUrl(path, params);
-    this.params = params;
     this.#updateSticky(params);
+    this.params = { ...this.#stickyParams, ...params };
     window.history.replaceState(null, "", url);
   }
 }

@@ -88,6 +88,12 @@ describe("parsePath", () => {
     expect(result.sessionId).toBe("copilot:abc123");
   });
 
+  it("falls back to raw segment on malformed percent encoding", () => {
+    setURL("/sessions/foo%");
+    const result = parsePath();
+    expect(result.sessionId).toBe("foo%");
+  });
+
   it("strips basePath from pathname", () => {
     const base = document.createElement("base");
     base.href = "/agentsview/";

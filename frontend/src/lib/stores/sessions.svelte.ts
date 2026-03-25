@@ -362,16 +362,18 @@ class SessionsStore {
    * not already present (e.g. subagent sessions filtered from groups).
    */
   async navigateToSession(id: string) {
+    this.setActiveSession(id);
     const existing = this.sessions.find((s) => s.id === id);
     if (!existing) {
       try {
         const session = await api.getSession(id);
-        this.sessions = [...this.sessions, session];
+        if (this.activeSessionId === id) {
+          this.sessions = [...this.sessions, session];
+        }
       } catch {
-        // Session not found - still attempt to select
+        // Session not found — selection stands without metadata
       }
     }
-    this.setActiveSession(id);
   }
 
   deselectSession() {
