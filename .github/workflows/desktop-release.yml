@@ -215,8 +215,26 @@ jobs:
           if-no-files-found: error
 
   build-linux:
-    name: Desktop Build (Linux)
-    runs-on: ubuntu-22.04
+    name: Desktop Build (Linux ${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    env:
+      AGENTSVIEW_TARGET_TRIPLE: ${{ matrix.target_triple }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            os: ubuntu-22.04
+            target_triple: ""
+            artifact_name: agentsview-desktop-linux
+            artifact_dir: desktop/src-tauri/target/release/bundle/appimage/
+            create_updater_artifacts: "true"
+          - arch: arm64
+            os: ubuntu-22.04-arm
+            target_triple: aarch64-unknown-linux-gnu
+            artifact_name: agentsview-desktop-linux-arm64
+            artifact_dir: desktop/src-tauri/target/aarch64-unknown-linux-gnu/release/bundle/appimage/
+            create_updater_artifacts: "false"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
@@ -230,6 +248,10 @@ jobs:
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
         with:
           node-version: "24"
+
+      - name: Install Rust target
+        if: env.AGENTSVIEW_TARGET_TRIPLE != ''
+        run: rustup target add "$AGENTSVIEW_TARGET_TRIPLE"
 
       - name: Install Linux system dependencies
         run: |
@@ -246,7 +268,9 @@ jobs:
       - name: Prepare sidecar
         env:
           AGENTSVIEW_VERSION: ${{ github.ref_name }}
-        run: npm run prepare-sidecar
+        run: |
+          export TAURI_ENV_TARGET_TRIPLE="$AGENTSVIEW_TARGET_TRIPLE"
+          npm run prepare-sidecar
         working-directory: desktop
 
       - name: Patch updater config for current repository
@@ -264,20 +288,30 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           AGENTSVIEW_UPDATER_PUBKEY: ${{ secrets.AGENTSVIEW_UPDATER_PUBKEY }}
-        run: npx tauri build --bundles appimage
+        run: |
+          build_cmd=(npx tauri build --bundles appimage)
+          if [ -n "$AGENTSVIEW_TARGET_TRIPLE" ]; then
+            build_cmd+=(--target "$AGENTSVIEW_TARGET_TRIPLE")
+          fi
+          if [ "${{ matrix.create_updater_artifacts }}" = "false" ]; then
+            build_cmd+=(--config '{"bundle":{"createUpdaterArtifacts":false}}')
+          fi
+          "${build_cmd[@]}"
         working-directory: desktop
 
       - name: Collect build artifacts
         run: |
           mkdir -p staging
-          cp desktop/src-tauri/target/release/bundle/appimage/*.AppImage staging/
-          cp desktop/src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz staging/
-          cp desktop/src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz.sig staging/
+          cp "${{ matrix.artifact_dir }}"/*.AppImage staging/
+          if [ "${{ matrix.create_updater_artifacts }}" = "true" ]; then
+            cp "${{ matrix.artifact_dir }}"/*.AppImage.tar.gz staging/
+            cp "${{ matrix.artifact_dir }}"/*.AppImage.tar.gz.sig staging/
+          fi
           ls -la staging/
 
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         with:
-          name: agentsview-desktop-linux
+          name: ${{ matrix.artifact_name }}
           path: staging/*
           if-no-files-found: error
 

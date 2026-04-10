@@ -51,6 +51,12 @@ jobs:
             target_triple: ""
             artifact_name: agentsview-desktop-linux
             artifact_dir: desktop/src-tauri/target/release/bundle/appimage/
+          - name: Linux (arm64)
+            os: ubuntu-22.04-arm
+            bundle: appimage
+            target_triple: aarch64-unknown-linux-gnu
+            artifact_name: agentsview-desktop-linux-arm64
+            artifact_dir: desktop/src-tauri/target/aarch64-unknown-linux-gnu/release/bundle/appimage/
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -83,8 +89,8 @@ jobs:
             libappindicator3-dev librsvg2-dev \
             patchelf
 
-      - name: Install Rust target (macOS)
-        if: runner.os == 'macOS' && env.AGENTSVIEW_TARGET_TRIPLE != ''
+      - name: Install Rust target
+        if: env.AGENTSVIEW_TARGET_TRIPLE != ''
         run: rustup target add "$AGENTSVIEW_TARGET_TRIPLE"
 
       - name: Install desktop dependencies
@@ -95,6 +101,7 @@ jobs:
         shell: bash
         run: |
           bash desktop/scripts/test-prepare-sidecar.sh
+          bash desktop/scripts/test-desktop-workflows.sh
           bash desktop/scripts/test-startup-ui.sh
 
       - name: Build desktop bundle

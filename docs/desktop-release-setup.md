@@ -340,6 +340,8 @@ Each release produces these artifacts:
 | `AgentsView_x.y.z_x64-setup.exe`          | Windows NSIS installer                       |
 | `AgentsView_x.y.z_x64-setup.nsis.zip`     | Windows updater bundle                       |
 | `AgentsView_x.y.z_x64-setup.nsis.zip.sig` | Windows updater signature                    |
+| `AgentsView_x.y.z_amd64.AppImage`         | Linux x86_64 AppImage                        |
+| `AgentsView_x.y.z_aarch64.AppImage`       | Linux arm64 AppImage                         |
 | `latest.json`                             | Updater manifest (version, URLs, signatures) |
 | `SHA256SUMS-desktop`                      | Checksums for all desktop artifacts          |
 

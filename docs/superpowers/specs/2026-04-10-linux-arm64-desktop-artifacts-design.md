@@ -1,31 +1,33 @@
-# Linux Arm64 Desktop Artifacts Design
+# Linux Arm64 Desktop Build Design
 
 ## Goal
 
-Add an arm64 Linux desktop artifact build to CI without changing the tagged
-release workflow or desktop updater publishing.
+Add an arm64 Linux desktop build that is verified in PR CI and shipped as a
+tagged release asset without changing Linux updater publishing.
 
 ## Scope
 
-This change only affects `.github/workflows/desktop-artifacts.yml`.
+This change affects:
 
-It will add a second Linux build entry that runs on `ubuntu-22.04-arm` and
-produces arm64 AppImage artifacts for pull requests and manual artifact runs.
+- `.github/workflows/desktop-artifacts.yml`
+- `.github/workflows/desktop-release.yml`
+- `docs/desktop-release-setup.md`
+
+It adds a second Linux build entry that runs on `ubuntu-22.04-arm` and produces
+an arm64 AppImage in both pull-request CI artifacts and tagged releases.
 
 This change will not:
 
-- modify `.github/workflows/desktop-release.yml`
-- publish new arm64 Linux release assets
 - add `linux-aarch64` entries to `latest.json`
 - change desktop updater behavior
 
 ## Design
 
-The existing desktop artifact workflow already drives cross-target selection
-through `AGENTSVIEW_TARGET_TRIPLE`. The arm64 Linux build should reuse that same
-pattern.
+The existing desktop workflows already drive cross-target selection through
+`AGENTSVIEW_TARGET_TRIPLE`. The arm64 Linux build should reuse that same
+pattern in both CI and release workflows.
 
-The workflow will gain one new matrix entry with:
+The desktop artifact workflow will gain one new matrix entry with:
 
 - `name: Linux (arm64)`
 - `os: ubuntu-22.04-arm`
@@ -35,15 +37,27 @@ The workflow will gain one new matrix entry with:
 - an artifact path under
   `desktop/src-tauri/target/aarch64-unknown-linux-gnu/release/bundle/appimage/`
 
+The desktop release workflow will split Linux builds into an arch matrix:
+
+- `x86_64` on `ubuntu-22.04`
+- `arm64` on `ubuntu-22.04-arm`
+
+The arm64 release job should publish only the `.AppImage` release asset. It
+should explicitly disable updater artifact generation so release uploads do not
+introduce `linux-aarch64` updater tarballs or signatures.
+
 Linux dependency installation should continue to key off `runner.os == 'Linux'`
 so the same package install step runs on both x86_64 and arm64 Ubuntu runners.
 
-The build step should continue to:
+The build steps should continue to:
 
 - export `TAURI_ENV_TARGET_TRIPLE` from `AGENTSVIEW_TARGET_TRIPLE`
 - run `npm run prepare-sidecar`
 - invoke `npx tauri build --target "$AGENTSVIEW_TARGET_TRIPLE"` when the target
   env var is set
+
+The release workflow should keep `latest.json` unchanged so Linux auto-update
+support remains `linux-x86_64` only.
 
 ## Verification
 
@@ -51,8 +65,12 @@ Verification remains limited to workflow-level checks:
 
 - `bash desktop/scripts/test-prepare-sidecar.sh`
 - `bash desktop/scripts/test-startup-ui.sh`
+- `bash desktop/scripts/test-desktop-workflows.sh`
 - YAML parsing for `.github/workflows/desktop-artifacts.yml`
+- YAML parsing for `.github/workflows/desktop-release.yml`
 
-Success means the workflow contains a valid `ubuntu-22.04-arm` Linux matrix
-entry with target-specific artifact output and leaves release publishing
-unchanged.
+Success means:
+
+- PR CI builds `ubuntu-22.04-arm` Linux artifacts
+- tagged releases upload a Linux arm64 `.AppImage`
+- `latest.json` remains Linux x86_64-only
