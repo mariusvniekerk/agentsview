@@ -16,6 +16,9 @@ jobs:
   build-macos:
     name: Desktop Build (macOS ${{ matrix.arch }})
     runs-on: macos-15
+    env:
+      AGENTSVIEW_TARGET_TRIPLE: ${{ matrix.target_triple }}
+      CARGO_BUILD_TARGET: ${{ matrix.target_triple }}
     strategy:
       fail-fast: false
       matrix:
@@ -39,7 +42,7 @@ jobs:
           node-version: "24"
 
       - name: Install Rust target
-        run: rustup target add ${{ matrix.target_triple }}
+        run: rustup target add "$AGENTSVIEW_TARGET_TRIPLE"
 
       - name: Install desktop dependencies
         run: npm ci
@@ -48,9 +51,9 @@ jobs:
       - name: Prepare sidecar
         env:
           AGENTSVIEW_VERSION: ${{ github.ref_name }}
-          TAURI_ENV_TARGET_TRIPLE: ${{ matrix.target_triple }}
-          CARGO_BUILD_TARGET: ${{ matrix.target_triple }}
-        run: npm run prepare-sidecar
+        run: |
+          export TAURI_ENV_TARGET_TRIPLE="$AGENTSVIEW_TARGET_TRIPLE"
+          npm run prepare-sidecar
         working-directory: desktop
 
       - name: Patch updater config for current repository
@@ -109,12 +112,12 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           AGENTSVIEW_UPDATER_PUBKEY: ${{ secrets.AGENTSVIEW_UPDATER_PUBKEY }}
-        run: npx tauri build --target ${{ matrix.target_triple }}
+        run: npx tauri build --target "$AGENTSVIEW_TARGET_TRIPLE"
         working-directory: desktop
 
       - name: Collect build artifacts
         run: |
-          bundle_dir="desktop/src-tauri/target/${{ matrix.target_triple }}/release/bundle"
+          bundle_dir="desktop/src-tauri/target/${AGENTSVIEW_TARGET_TRIPLE}/release/bundle"
           mkdir -p staging
           cp "$bundle_dir"/dmg/*.dmg staging/
 

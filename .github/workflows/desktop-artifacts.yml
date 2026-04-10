@@ -19,35 +19,38 @@ concurrency:
 
 jobs:
   build:
-    name: Desktop Build (${{ matrix.platform }})
+    name: Desktop Build (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
+    env:
+      AGENTSVIEW_TARGET_TRIPLE: ${{ matrix.target_triple }}
+      CARGO_BUILD_TARGET: ${{ matrix.target_triple }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-aarch64
+          - name: macOS (aarch64)
             os: macos-15
             bundle: app
-            bundle_dir: macos
             target_triple: aarch64-apple-darwin
+            artifact_name: agentsview-desktop-macos-aarch64
             artifact_dir: desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/
-          - platform: macos-x86_64
+          - name: macOS (x86_64)
             os: macos-15
             bundle: app
-            bundle_dir: macos
             target_triple: x86_64-apple-darwin
+            artifact_name: agentsview-desktop-macos-x86_64
             artifact_dir: desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/macos/
-          - platform: windows
+          - name: Windows
             os: windows-latest
             bundle: nsis
-            bundle_dir: nsis
             target_triple: ""
+            artifact_name: agentsview-desktop-windows
             artifact_dir: desktop/src-tauri/target/release/bundle/nsis/
-          - platform: linux
+          - name: Linux
             os: ubuntu-22.04
             bundle: appimage
-            bundle_dir: appimage
             target_triple: ""
+            artifact_name: agentsview-desktop-linux
             artifact_dir: desktop/src-tauri/target/release/bundle/appimage/
 
     steps:
@@ -64,7 +67,7 @@ jobs:
           node-version: "24"
 
       - name: Setup MinGW (Windows)
-        if: matrix.platform == 'windows'
+        if: runner.os == 'Windows'
         uses: msys2/setup-msys2@cafece8e6baf9247cf9b1bf95097b0b983cc558d  # v2
         with:
           msystem: MINGW64
@@ -73,7 +76,7 @@ jobs:
           path-type: inherit
 
       - name: Install Linux system dependencies
-        if: matrix.platform == 'linux'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update -q
           sudo apt-get install -y \
@@ -82,8 +85,8 @@ jobs:
             patchelf
 
       - name: Install Rust target (macOS)
-        if: startsWith(matrix.platform, 'macos-')
-        run: rustup target add ${{ matrix.target_triple }}
+        if: runner.os == 'macOS' && env.AGENTSVIEW_TARGET_TRIPLE != ''
+        run: rustup target add "$AGENTSVIEW_TARGET_TRIPLE"
 
       - name: Install desktop dependencies
         run: npm ci
@@ -97,15 +100,13 @@ jobs:
 
       - name: Build desktop bundle
         shell: bash
-        env:
-          TAURI_ENV_TARGET_TRIPLE: ${{ matrix.target_triple }}
-          CARGO_BUILD_TARGET: ${{ matrix.target_triple }}
         run: |
           cd desktop
+          export TAURI_ENV_TARGET_TRIPLE="$AGENTSVIEW_TARGET_TRIPLE"
           npm run prepare-sidecar
           build_args=()
-          if [ -n "$TAURI_ENV_TARGET_TRIPLE" ]; then
-            build_args+=(--target "$TAURI_ENV_TARGET_TRIPLE")
+          if [ -n "$AGENTSVIEW_TARGET_TRIPLE" ]; then
+            build_args+=(--target "$AGENTSVIEW_TARGET_TRIPLE")
           fi
           npx tauri build --bundles "${{ matrix.bundle }}" "${build_args[@]}" \
             --config '{"bundle":{"createUpdaterArtifacts":false}}'
@@ -116,11 +117,8 @@ jobs:
 
       - name: Smoke check sidecar metadata
         shell: bash
-        env:
-          TAURI_ENV_TARGET_TRIPLE: ${{ matrix.target_triple }}
-          CARGO_BUILD_TARGET: ${{ matrix.target_triple }}
         run: |
-          target_triple="${TAURI_ENV_TARGET_TRIPLE:-${CARGO_BUILD_TARGET:-$(rustc -vV | awk '/^host: /{print $2}')}}"
+          target_triple="${AGENTSVIEW_TARGET_TRIPLE:-${CARGO_BUILD_TARGET:-$(rustc -vV | awk '/^host: /{print $2}')}}"
           if [ -z "$target_triple" ]; then
             echo "target triple is empty" >&2
             exit 1
@@ -152,6 +150,6 @@ jobs:
 
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         with:
-          name: agentsview-desktop-${{ matrix.platform }}
+          name: ${{ matrix.artifact_name }}
           path: ${{ matrix.artifact_dir }}
           if-no-files-found: error
