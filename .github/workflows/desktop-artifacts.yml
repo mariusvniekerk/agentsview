@@ -25,18 +25,30 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macos
+          - platform: macos-aarch64
             os: macos-15
             bundle: app
             bundle_dir: macos
+            target_triple: aarch64-apple-darwin
+            artifact_dir: desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/
+          - platform: macos-x86_64
+            os: macos-15
+            bundle: app
+            bundle_dir: macos
+            target_triple: x86_64-apple-darwin
+            artifact_dir: desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/macos/
           - platform: windows
             os: windows-latest
             bundle: nsis
             bundle_dir: nsis
+            target_triple: ""
+            artifact_dir: desktop/src-tauri/target/release/bundle/nsis/
           - platform: linux
             os: ubuntu-22.04
             bundle: appimage
             bundle_dir: appimage
+            target_triple: ""
+            artifact_dir: desktop/src-tauri/target/release/bundle/appimage/
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -69,6 +81,10 @@ jobs:
             libappindicator3-dev librsvg2-dev \
             patchelf
 
+      - name: Install Rust target (macOS)
+        if: startsWith(matrix.platform, 'macos-')
+        run: rustup target add ${{ matrix.target_triple }}
+
       - name: Install desktop dependencies
         run: npm ci
         working-directory: desktop
@@ -81,10 +97,17 @@ jobs:
 
       - name: Build desktop bundle
         shell: bash
+        env:
+          TAURI_ENV_TARGET_TRIPLE: ${{ matrix.target_triple }}
+          CARGO_BUILD_TARGET: ${{ matrix.target_triple }}
         run: |
           cd desktop
           npm run prepare-sidecar
-          npx tauri build --bundles "${{ matrix.bundle }}" \
+          build_args=()
+          if [ -n "$TAURI_ENV_TARGET_TRIPLE" ]; then
+            build_args+=(--target "$TAURI_ENV_TARGET_TRIPLE")
+          fi
+          npx tauri build --bundles "${{ matrix.bundle }}" "${build_args[@]}" \
             --config '{"bundle":{"createUpdaterArtifacts":false}}'
 
       - name: Desktop smoke tests (Rust unit tests)
@@ -93,6 +116,9 @@ jobs:
 
       - name: Smoke check sidecar metadata
         shell: bash
+        env:
+          TAURI_ENV_TARGET_TRIPLE: ${{ matrix.target_triple }}
+          CARGO_BUILD_TARGET: ${{ matrix.target_triple }}
         run: |
           target_triple="${TAURI_ENV_TARGET_TRIPLE:-${CARGO_BUILD_TARGET:-$(rustc -vV | awk '/^host: /{print $2}')}}"
           if [ -z "$target_triple" ]; then
@@ -127,5 +153,5 @@ jobs:
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         with:
           name: agentsview-desktop-${{ matrix.platform }}
-          path: desktop/src-tauri/target/release/bundle/${{ matrix.bundle_dir }}/
+          path: ${{ matrix.artifact_dir }}
           if-no-files-found: error
