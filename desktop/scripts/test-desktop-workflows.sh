@@ -41,6 +41,8 @@ assert_contains "$ARTIFACTS_WORKFLOW" "target_triple: aarch64-unknown-linux-gnu"
   "desktop artifacts workflow should target Linux arm64"
 assert_contains "$ARTIFACTS_WORKFLOW" "artifact_name: agentsview-desktop-linux-arm64" \
   "desktop artifacts workflow should upload a distinct Linux arm64 artifact"
+assert_contains "$ARTIFACTS_WORKFLOW" "xdg-utils" \
+  "desktop artifacts workflow should install xdg-utils for AppImage bundling"
 
 assert_contains "$RELEASE_WORKFLOW" 'name: Desktop Build (Linux ${{ matrix.arch }})' \
   "desktop release workflow should matrix Linux builds by arch"
@@ -54,6 +56,8 @@ assert_contains "$RELEASE_WORKFLOW" 'create_updater_artifacts: "false"' \
   "desktop release workflow should disable updater artifacts for Linux arm64"
 assert_contains "$RELEASE_WORKFLOW" "linux-x86_64" \
   "desktop release workflow should keep Linux x86_64 updater support"
+assert_contains "$RELEASE_WORKFLOW" "xdg-utils" \
+  "desktop release workflow should install xdg-utils for AppImage bundling"
 assert_not_contains "$RELEASE_WORKFLOW" 'linux-aarch64' \
   "desktop release workflow should not add Linux arm64 to latest.json"
 
