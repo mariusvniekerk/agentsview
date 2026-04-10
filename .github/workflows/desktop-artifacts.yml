@@ -23,7 +23,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       AGENTSVIEW_TARGET_TRIPLE: ${{ matrix.target_triple }}
-      CARGO_BUILD_TARGET: ${{ matrix.target_triple }}
     strategy:
       fail-fast: false
       matrix:
@@ -118,7 +117,7 @@ jobs:
       - name: Smoke check sidecar metadata
         shell: bash
         run: |
-          target_triple="${AGENTSVIEW_TARGET_TRIPLE:-${CARGO_BUILD_TARGET:-$(rustc -vV | awk '/^host: /{print $2}')}}"
+          target_triple="${AGENTSVIEW_TARGET_TRIPLE:-$(rustc -vV | awk '/^host: /{print $2}')}"
           if [ -z "$target_triple" ]; then
             echo "target triple is empty" >&2
             exit 1
