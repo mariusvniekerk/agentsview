@@ -104,12 +104,12 @@ jobs:
           cd desktop
           export TAURI_ENV_TARGET_TRIPLE="$AGENTSVIEW_TARGET_TRIPLE"
           npm run prepare-sidecar
-          build_args=()
+          build_cmd=(npx tauri build --bundles "${{ matrix.bundle }}")
           if [ -n "$AGENTSVIEW_TARGET_TRIPLE" ]; then
-            build_args+=(--target "$AGENTSVIEW_TARGET_TRIPLE")
+            build_cmd+=(--target "$AGENTSVIEW_TARGET_TRIPLE")
           fi
-          npx tauri build --bundles "${{ matrix.bundle }}" "${build_args[@]}" \
-            --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          build_cmd+=(--config '{"bundle":{"createUpdaterArtifacts":false}}')
+          "${build_cmd[@]}"
 
       - name: Desktop smoke tests (Rust unit tests)
         shell: bash
