@@ -26,10 +26,35 @@ function defaultToggles(): Toggles {
   };
 }
 
+function isGroupBy(value: unknown): value is GroupBy {
+  return value === "project" || value === "model" || value === "agent";
+}
+
 function loadToggles(): Toggles {
   try {
     const raw = localStorage.getItem(TOGGLES_KEY);
-    if (raw) return JSON.parse(raw) as Toggles;
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<Toggles>;
+      const defaults = defaultToggles();
+      // `Project | Model | Agent` selector is shared across usage
+      // panels. Migrate legacy split state by choosing one value
+      // and applying it to both widgets.
+      const sharedGroupBy = isGroupBy(parsed.timeSeries?.groupBy)
+        ? parsed.timeSeries.groupBy
+        : isGroupBy(parsed.attribution?.groupBy)
+          ? parsed.attribution.groupBy
+          : defaults.timeSeries.groupBy;
+      return {
+        timeSeries: {
+          groupBy: sharedGroupBy,
+          view: parsed.timeSeries?.view ?? defaults.timeSeries.view,
+        },
+        attribution: {
+          groupBy: sharedGroupBy,
+          view: parsed.attribution?.view ?? defaults.attribution.view,
+        },
+      };
+    }
   } catch {
     // Corrupted localStorage — fall back to defaults.
   }
@@ -218,6 +243,7 @@ class UsageStore {
 
   setTimeSeriesGroupBy(g: GroupBy) {
     this.toggles.timeSeries.groupBy = g;
+    this.toggles.attribution.groupBy = g;
     saveToggles(this.toggles);
   }
 
@@ -227,6 +253,7 @@ class UsageStore {
   }
 
   setAttributionGroupBy(g: GroupBy) {
+    this.toggles.timeSeries.groupBy = g;
     this.toggles.attribution.groupBy = g;
     saveToggles(this.toggles);
   }
