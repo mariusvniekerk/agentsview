@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	groupCore = "core"
-	groupData = "data"
-	groupMeta = "meta"
+	groupCore  = "core"
+	groupData  = "data"
+	groupUsage = "usage"
+	groupMeta  = "meta"
 )
 
 func newRootCommand() *cobra.Command {
@@ -38,6 +39,7 @@ func newRootCommand() *cobra.Command {
 	root.AddGroup(
 		&cobra.Group{ID: groupCore, Title: "Core Commands:"},
 		&cobra.Group{ID: groupData, Title: "Data Commands:"},
+		&cobra.Group{ID: groupUsage, Title: "Usage Commands:"},
 		&cobra.Group{ID: groupMeta, Title: "Other Commands:"},
 	)
 	root.SetCompletionCommandGroupID(groupMeta)
@@ -59,6 +61,7 @@ func newRootCommand() *cobra.Command {
 	root.AddCommand(newTokenUseCommand())
 	root.AddCommand(newImportCommand())
 	root.AddCommand(newProjectsCommand())
+	root.AddCommand(newUsageCommand())
 	root.AddCommand(newPGCommand())
 	root.AddCommand(newVersionCommand())
 
@@ -226,6 +229,80 @@ func newProjectsCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().Bool("json", false, "Output as JSON array")
+	return cmd
+}
+
+func newUsageCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "usage",
+		Short:        "Token cost tracking and reporting",
+		GroupID:      groupUsage,
+		SilenceUsage: true,
+		Args:         cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
+	}
+	cmd.AddCommand(newUsageDailyCommand())
+	cmd.AddCommand(newUsageStatuslineCommand())
+	return cmd
+}
+
+func newUsageDailyCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "daily",
+		Short:        "Daily cost summary",
+		SilenceUsage: true,
+		Args:         cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			runUsageDaily(changedFlagArgs(cmd.Flags()))
+		},
+	}
+	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmd.Flags().String("since", "", "Start date (YYYY-MM-DD)")
+	cmd.Flags().String("until", "", "End date (YYYY-MM-DD)")
+	cmd.Flags().Bool(
+		"all",
+		false,
+		"Include all history (overrides default 30-day window)",
+	)
+	cmd.Flags().String("agent", "", "Filter by agent name")
+	cmd.Flags().Bool(
+		"breakdown",
+		false,
+		"Show per-model breakdown rows",
+	)
+	cmd.Flags().Bool("offline", false, "Use fallback pricing only")
+	cmd.Flags().Bool(
+		"no-sync",
+		false,
+		"Skip on-demand sync before querying",
+	)
+	cmd.Flags().String(
+		"timezone",
+		"",
+		"IANA timezone for date bucketing",
+	)
+	return cmd
+}
+
+func newUsageStatuslineCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "statusline",
+		Short:        "One-line cost summary for today",
+		SilenceUsage: true,
+		Args:         cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			runUsageStatusline(changedFlagArgs(cmd.Flags()))
+		},
+	}
+	cmd.Flags().String("agent", "", "Filter by agent name")
+	cmd.Flags().Bool("offline", false, "Use fallback pricing only")
+	cmd.Flags().Bool(
+		"no-sync",
+		false,
+		"Skip on-demand sync before querying",
+	)
 	return cmd
 }
 

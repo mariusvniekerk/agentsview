@@ -26,6 +26,9 @@ func TestRootHelpListsAllCommands(t *testing.T) {
 		"token-use",
 		"import",
 		"projects",
+		"usage",
+		"usage daily",
+		"usage statusline",
 		"version",
 		"pg",
 		"pg push",
@@ -55,6 +58,7 @@ func TestRootHelpGroupsCompletionAtBottom(t *testing.T) {
 	for _, want := range []string{
 		"Core Commands:",
 		"Data Commands:",
+		"Usage Commands:",
 		"Other Commands:",
 		"completion             Generate the autocompletion script for the specified shell",
 	} {
@@ -65,11 +69,16 @@ func TestRootHelpGroupsCompletionAtBottom(t *testing.T) {
 
 	core := strings.Index(help, "Core Commands:")
 	data := strings.Index(help, "Data Commands:")
+	usage := strings.Index(help, "Usage Commands:")
 	other := strings.Index(help, "Other Commands:")
 	completion := strings.Index(help, "completion             Generate the autocompletion script for the specified shell")
 	serve := strings.Index(help, "serve                  Start server")
-	if !(core >= 0 && data > core && other > data) {
+	usageCmd := strings.Index(help, "usage                  Token cost tracking and reporting")
+	if !(core >= 0 && data > core && usage > data && other > usage) {
 		t.Fatalf("unexpected group order\n%s", help)
+	}
+	if usageCmd < usage || usageCmd > other {
+		t.Fatalf("usage commands not grouped separately\n%s", help)
 	}
 	if completion < other {
 		t.Fatalf("completion not grouped at bottom\n%s", help)
