@@ -34,7 +34,7 @@ const (
 )
 
 func main() {
-	if err := execute(); err != nil {
+	if err := executeCLI(); err != nil {
 		fatal("%v", err)
 	}
 }

@@ -174,9 +174,9 @@ func TestLegacyLongFlagWarning(t *testing.T) {
 	}
 }
 
-func TestExecuteWithLegacyFlagCompatWarnsOnce(t *testing.T) {
+func TestExecuteCLIWithLegacyFlagCompatWarnsOnce(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	if err := executeWithLegacyFlagCompat([]string{"-version"}, &stdout, &stderr); err != nil {
+	if err := executeCLIWithLegacyFlagCompat([]string{"-version"}, &stdout, &stderr); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "agentsview ") {

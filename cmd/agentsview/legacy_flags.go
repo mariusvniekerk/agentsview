@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
-func executeWithLegacyFlagCompat(args []string, stdout, stderr io.Writer) error {
+func executeCLIWithLegacyFlagCompat(args []string, stdout, stderr io.Writer) error {
 	cmd := newRootCommand()
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
@@ -106,6 +106,6 @@ func isNegativeNumber(arg string) bool {
 	return arg != ""
 }
 
-func execute() error {
-	return executeWithLegacyFlagCompat(os.Args[1:], os.Stdout, os.Stderr)
+func executeCLI() error {
+	return executeCLIWithLegacyFlagCompat(os.Args[1:], os.Stdout, os.Stderr)
 }
