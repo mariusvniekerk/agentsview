@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/wesm/agentsview/internal/config"
+	"golang.org/x/term"
 )
 
 const (
@@ -440,7 +441,7 @@ func writeRootHelp(w io.Writer, root *cobra.Command) {
 	renderRootCommands(w, root)
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Flags:")
-	fmt.Fprint(w, root.Flags().FlagUsagesWrapped(80))
+	fmt.Fprint(w, root.Flags().FlagUsagesWrapped(flagHelpWidth(w)))
 	fmt.Fprintln(w, "Environment variables:")
 	fmt.Fprintln(w, "  CLAUDE_PROJECTS_DIR     Claude Code projects directory")
 	fmt.Fprintln(w, "  CODEX_SESSIONS_DIR      Codex sessions directory")
@@ -469,6 +470,28 @@ func writeRootHelp(w io.Writer, root *cobra.Command) {
 	fmt.Fprintln(w, "  override config file arrays.")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Data stored in ~/.agentsview/ by default.")
+}
+
+func normalizeFlagHelpWidth(width int) int {
+	if width <= 0 {
+		return 80
+	}
+	if width > 160 {
+		return 160
+	}
+	return width
+}
+
+func flagHelpWidth(w io.Writer) int {
+	file, ok := w.(*os.File)
+	if !ok {
+		return 80
+	}
+	width, _, err := term.GetSize(int(file.Fd()))
+	if err != nil {
+		return 80
+	}
+	return normalizeFlagHelpWidth(width)
 }
 
 func renderRootUsage(w io.Writer, root *cobra.Command) {

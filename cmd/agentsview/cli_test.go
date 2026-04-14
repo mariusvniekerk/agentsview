@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 )
@@ -113,6 +114,41 @@ func TestRootHelpDoesNotDuplicateCommandListings(t *testing.T) {
 	}
 	if strings.Contains(help, "\nCommands:\n") {
 		t.Fatalf("help should not include redundant Commands heading\n%s", help)
+	}
+}
+
+func TestNormalizeFlagHelpWidth(t *testing.T) {
+	tests := []struct {
+		in   int
+		want int
+	}{
+		{in: 0, want: 80},
+		{in: -1, want: 80},
+		{in: 79, want: 79},
+		{in: 120, want: 120},
+		{in: 160, want: 160},
+		{in: 220, want: 160},
+	}
+	for _, tt := range tests {
+		if got := normalizeFlagHelpWidth(tt.in); got != tt.want {
+			t.Fatalf("normalizeFlagHelpWidth(%d) = %d, want %d", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestFlagHelpWidthFallback(t *testing.T) {
+	if got := flagHelpWidth(&bytes.Buffer{}); got != 80 {
+		t.Fatalf("flagHelpWidth(buffer) = %d, want 80", got)
+	}
+
+	f, err := os.CreateTemp(t.TempDir(), "help-width")
+	if err != nil {
+		t.Fatalf("CreateTemp: %v", err)
+	}
+	defer f.Close()
+
+	if got := flagHelpWidth(f); got != 80 {
+		t.Fatalf("flagHelpWidth(file) = %d, want 80", got)
 	}
 }
 
