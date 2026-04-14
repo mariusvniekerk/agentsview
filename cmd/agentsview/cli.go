@@ -4,11 +4,18 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/wesm/agentsview/internal/config"
+)
+
+const (
+	groupCore = "core"
+	groupData = "data"
+	groupMeta = "meta"
 )
 
 func newRootCommand() *cobra.Command {
@@ -28,6 +35,14 @@ func newRootCommand() *cobra.Command {
 			runServe(changedFlagArgs(cmd.Flags()))
 		},
 	}
+	root.AddGroup(
+		&cobra.Group{ID: groupCore, Title: "Core Commands:"},
+		&cobra.Group{ID: groupData, Title: "Data Commands:"},
+		&cobra.Group{ID: groupMeta, Title: "Other Commands:"},
+	)
+	root.SetCompletionCommandGroupID(groupMeta)
+	root.SetHelpCommandGroupID(groupMeta)
+
 	config.RegisterServePFlags(root.Flags())
 	root.Flags().BoolVarP(
 		&showVersion,
@@ -63,6 +78,7 @@ func newServeCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "serve",
 		Short:        "Start server",
+		GroupID:      groupCore,
 		SilenceUsage: true,
 		Args:         cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -77,6 +93,7 @@ func newSyncCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "sync",
 		Short:        "Sync session data without serving",
+		GroupID:      groupCore,
 		SilenceUsage: true,
 		Args:         cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -95,6 +112,7 @@ func newPruneCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "prune",
 		Short:        "Delete sessions matching filters",
+		GroupID:      groupCore,
 		SilenceUsage: true,
 		Args:         cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -138,6 +156,7 @@ func newUpdateCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "update",
 		Short:        "Check for and install updates",
+		GroupID:      groupMeta,
 		SilenceUsage: true,
 		Args:         cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -166,6 +185,7 @@ func newTokenUseCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:          "token-use <session-id>",
 		Short:        "Show token usage for a session (JSON)",
+		GroupID:      groupData,
 		SilenceUsage: true,
 		Args:         cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -178,6 +198,7 @@ func newImportCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "import --type <type> <path>",
 		Short:        "Import conversations",
+		GroupID:      groupData,
 		SilenceUsage: true,
 		Args:         cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -197,6 +218,7 @@ func newProjectsCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "projects",
 		Short:        "List projects with session counts",
+		GroupID:      groupCore,
 		SilenceUsage: true,
 		Args:         cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -211,6 +233,7 @@ func newPGCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "pg",
 		Short:        "PostgreSQL sync and serve commands",
+		GroupID:      groupData,
 		SilenceUsage: true,
 		Args:         cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -287,6 +310,7 @@ func newVersionCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:          "version",
 		Short:        "Show version information",
+		GroupID:      groupMeta,
 		SilenceUsage: true,
 		Args:         cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -334,34 +358,9 @@ func writeRootHelp(w io.Writer, root *cobra.Command) {
 	fmt.Fprintln(w, "Cursor, and Amp session data into SQLite, serves analytics,")
 	fmt.Fprintln(w, "and exposes session browser via local web UI.")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintf(w, "  %s [flags]\n", root.CommandPath())
-	for _, cmd := range root.Commands() {
-		if !cmd.IsAvailableCommand() || cmd.Hidden {
-			continue
-		}
-		fmt.Fprintf(w, "  %s\n", commandUsage(root, cmd))
-		for _, child := range cmd.Commands() {
-			if !child.IsAvailableCommand() || child.Hidden {
-				continue
-			}
-			fmt.Fprintf(w, "  %s\n", commandUsage(root, child))
-		}
-	}
+	renderRootUsage(w, root)
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Commands:")
-	for _, cmd := range root.Commands() {
-		if !cmd.IsAvailableCommand() || cmd.Hidden {
-			continue
-		}
-		fmt.Fprintf(w, "  %-18s %s\n", commandPath(root, cmd), cmd.Short)
-		for _, child := range cmd.Commands() {
-			if !child.IsAvailableCommand() || child.Hidden {
-				continue
-			}
-			fmt.Fprintf(w, "  %-18s %s\n", commandPath(root, child), child.Short)
-		}
-	}
+	renderRootCommands(w, root)
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Flags:")
 	fmt.Fprint(w, root.Flags().FlagUsagesWrapped(80))
@@ -393,6 +392,56 @@ func writeRootHelp(w io.Writer, root *cobra.Command) {
 	fmt.Fprintln(w, "  override config file arrays.")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Data stored in ~/.agentsview/ by default.")
+}
+
+func renderRootUsage(w io.Writer, root *cobra.Command) {
+	fmt.Fprintln(w, "Usage:")
+	fmt.Fprintf(w, "  %s [flags]\n", root.CommandPath())
+	for _, group := range root.Groups() {
+		cmds := groupedRootCommands(root, group.ID)
+		if len(cmds) == 0 {
+			continue
+		}
+		fmt.Fprintf(w, "\n%s\n", group.Title)
+		for _, cmd := range cmds {
+			fmt.Fprintf(w, "  %s\n", commandUsage(root, cmd))
+		}
+	}
+}
+
+func renderRootCommands(w io.Writer, root *cobra.Command) {
+	fmt.Fprintln(w, "Commands:")
+	for _, group := range root.Groups() {
+		cmds := groupedRootCommands(root, group.ID)
+		if len(cmds) == 0 {
+			continue
+		}
+		fmt.Fprintf(w, "%s\n", group.Title)
+		for _, cmd := range cmds {
+			fmt.Fprintf(w, "  %-22s %s\n", commandPath(root, cmd), cmd.Short)
+		}
+		fmt.Fprintln(w)
+	}
+}
+
+func groupedRootCommands(root *cobra.Command, groupID string) []*cobra.Command {
+	var grouped []*cobra.Command
+	for _, cmd := range root.Commands() {
+		if !cmd.IsAvailableCommand() || cmd.Hidden || cmd.GroupID != groupID {
+			continue
+		}
+		grouped = append(grouped, cmd)
+		for _, child := range cmd.Commands() {
+			if !child.IsAvailableCommand() || child.Hidden {
+				continue
+			}
+			grouped = append(grouped, child)
+		}
+	}
+	slices.SortStableFunc(grouped, func(a, b *cobra.Command) int {
+		return strings.Compare(commandPath(root, a), commandPath(root, b))
+	})
+	return grouped
 }
 
 func commandUsage(root, cmd *cobra.Command) string {
