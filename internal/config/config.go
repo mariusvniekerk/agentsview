@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/spf13/pflag"
 	"github.com/wesm/agentsview/internal/parser"
 )
 
@@ -502,9 +503,69 @@ func (f *stringListFlag) Set(value string) error {
 	return nil
 }
 
+func (f *stringListFlag) Type() string {
+	return "stringList"
+}
+
 // RegisterServeFlags registers serve-command flags on fs.
 // The caller must call fs.Parse before passing fs to Load.
 func RegisterServeFlags(fs *flag.FlagSet) {
+	fs.String("host", "127.0.0.1", "Host to bind to")
+	fs.Int("port", 8080, "Port to listen on")
+	fs.String(
+		"public-url", "",
+		"Public URL to trust and open for hostname or proxy access",
+	)
+	fs.Var(
+		&stringListFlag{},
+		"public-origin",
+		"Trusted browser origin to allow for remote or proxied access (repeatable or comma-separated)",
+	)
+	fs.String(
+		"proxy", "",
+		"Managed reverse proxy mode (currently: caddy)",
+	)
+	fs.String(
+		"caddy-bin", "",
+		"Caddy binary to use when -proxy=caddy (default: caddy)",
+	)
+	fs.String(
+		"proxy-bind-host", "",
+		"Local interface/IP for managed Caddy to bind (default: 0.0.0.0)",
+	)
+	fs.Int(
+		"public-port", 0,
+		"External port for the public URL in managed Caddy mode (default: 8443)",
+	)
+	fs.String(
+		"tls-cert", "",
+		"TLS certificate path for managed Caddy HTTPS mode",
+	)
+	fs.String(
+		"tls-key", "",
+		"TLS key path for managed Caddy HTTPS mode",
+	)
+	fs.Var(
+		&stringListFlag{},
+		"allowed-subnet",
+		"Client CIDR allowed to connect to the managed proxy (repeatable or comma-separated)",
+	)
+	fs.Bool(
+		"no-browser", false,
+		"Don't open browser on startup",
+	)
+	fs.Bool(
+		"no-sync", false,
+		"Skip initial sync and disable background sync/file watching",
+	)
+	fs.Bool(
+		"no-update-check", false,
+		"Disable the update check API endpoint",
+	)
+}
+
+// RegisterServePFlags registers serve-command flags on fs.
+func RegisterServePFlags(fs *pflag.FlagSet) {
 	fs.String("host", "127.0.0.1", "Host to bind to")
 	fs.Int("port", 8080, "Port to listen on")
 	fs.String(

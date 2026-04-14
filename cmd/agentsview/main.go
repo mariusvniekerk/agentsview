@@ -34,46 +34,9 @@ const (
 )
 
 func main() {
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "prune":
-			runPrune(os.Args[2:])
-			return
-		case "update":
-			runUpdate(os.Args[2:])
-			return
-		case "serve":
-			runServe(os.Args[2:])
-			return
-		case "sync":
-			runSync(os.Args[2:])
-			return
-		case "pg":
-			runPG(os.Args[2:])
-			return
-		case "token-use":
-			runTokenUse(os.Args[2:])
-			return
-		case "import":
-			runImport(os.Args[2:])
-			return
-		case "projects":
-			runProjects(os.Args[2:])
-			return
-		case "usage":
-			runUsage(os.Args[2:])
-			return
-		case "version", "--version", "-v":
-			fmt.Printf("agentsview %s (commit %s, built %s)\n",
-				version, commit, buildDate)
-			return
-		case "help", "--help", "-h":
-			printUsage()
-			return
-		}
+	if err := execute(); err != nil {
+		fatal("%v", err)
 	}
-
-	runServe(os.Args[1:])
 }
 
 func printUsage() {
