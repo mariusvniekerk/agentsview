@@ -521,6 +521,9 @@ func groupedRootCommands(root *cobra.Command, groupID string) []*cobra.Command {
 			continue
 		}
 		grouped = append(grouped, cmd)
+		if !shouldListRootChildren(cmd) {
+			continue
+		}
 		for _, child := range cmd.Commands() {
 			if !child.IsAvailableCommand() || child.Hidden {
 				continue
@@ -532,6 +535,10 @@ func groupedRootCommands(root *cobra.Command, groupID string) []*cobra.Command {
 		return strings.Compare(commandPath(root, a), commandPath(root, b))
 	})
 	return grouped
+}
+
+func shouldListRootChildren(cmd *cobra.Command) bool {
+	return cmd.Name() != "completion"
 }
 
 func commandUsage(root, cmd *cobra.Command) string {

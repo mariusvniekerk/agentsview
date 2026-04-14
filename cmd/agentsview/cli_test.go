@@ -152,6 +152,33 @@ func TestFlagHelpWidthFallback(t *testing.T) {
 	}
 }
 
+func TestRootHelpShowsOnlyTopLevelCompletionCommand(t *testing.T) {
+	cmd := newRootCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	help := out.String()
+	if !strings.Contains(help, "completion             Generate the autocompletion script for the specified shell") {
+		t.Fatalf("root help missing top-level completion command\n%s", help)
+	}
+	for _, unwanted := range []string{
+		"completion bash",
+		"completion fish",
+		"completion powershell",
+		"completion zsh",
+	} {
+		if strings.Contains(help, unwanted) {
+			t.Fatalf("root help should not list %q\n%s", unwanted, help)
+		}
+	}
+}
+
 func TestRootVersionFlag(t *testing.T) {
 	cmd := newRootCommand()
 	var out bytes.Buffer
