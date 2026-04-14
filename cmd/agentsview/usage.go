@@ -72,6 +72,18 @@ func resolveDefaultSince(
 		Format("2006-01-02")
 }
 
+type UsageDailyConfig struct {
+	JSON      bool
+	Since     string
+	Until     string
+	All       bool
+	Agent     string
+	Breakdown bool
+	Offline   bool
+	NoSync    bool
+	Timezone  string
+}
+
 func runUsageDaily(args []string) {
 	fs := flag.NewFlagSet("usage daily", flag.ExitOnError)
 	jsonOut := fs.Bool("json", false,
@@ -97,25 +109,39 @@ func runUsageDaily(args []string) {
 		os.Exit(1)
 	}
 
+	runUsageDailyConfig(UsageDailyConfig{
+		JSON:      *jsonOut,
+		Since:     *since,
+		Until:     *until,
+		All:       *all,
+		Agent:     *agent,
+		Breakdown: *breakdown,
+		Offline:   *offline,
+		NoSync:    *noSync,
+		Timezone:  *timezone,
+	})
+}
+
+func runUsageDailyConfig(cfg UsageDailyConfig) {
 	database, appCfg := openUsageDB()
 	defer database.Close()
 
-	ensureFreshData(appCfg, database, *noSync)
-	ensurePricing(database, *offline)
+	ensureFreshData(appCfg, database, cfg.NoSync)
+	ensurePricing(database, cfg.Offline)
 
-	tz := *timezone
+	tz := cfg.Timezone
 	if tz == "" {
 		tz = localTimezone()
 	}
 
 	effectiveSince := resolveDefaultSince(
-		*since, *until, *all, time.Now(), tz,
+		cfg.Since, cfg.Until, cfg.All, time.Now(), tz,
 	)
 
 	filter := db.UsageFilter{
 		From:     effectiveSince,
-		To:       *until,
-		Agent:    *agent,
+		To:       cfg.Until,
+		Agent:    cfg.Agent,
 		Timezone: tz,
 	}
 
@@ -127,7 +153,7 @@ func runUsageDaily(args []string) {
 		os.Exit(1)
 	}
 
-	if *jsonOut {
+	if cfg.JSON {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(result); err != nil {
@@ -137,7 +163,13 @@ func runUsageDaily(args []string) {
 		return
 	}
 
-	printDailyTable(result, *breakdown)
+	printDailyTable(result, cfg.Breakdown)
+}
+
+type UsageStatuslineConfig struct {
+	Agent   string
+	Offline bool
+	NoSync  bool
 }
 
 func runUsageStatusline(args []string) {
@@ -153,17 +185,25 @@ func runUsageStatusline(args []string) {
 		os.Exit(1)
 	}
 
+	runUsageStatuslineConfig(UsageStatuslineConfig{
+		Agent:   *agent,
+		Offline: *offline,
+		NoSync:  *noSync,
+	})
+}
+
+func runUsageStatuslineConfig(cfg UsageStatuslineConfig) {
 	database, appCfg := openUsageDB()
 	defer database.Close()
 
-	ensureFreshData(appCfg, database, *noSync)
-	ensurePricing(database, *offline)
+	ensureFreshData(appCfg, database, cfg.NoSync)
+	ensurePricing(database, cfg.Offline)
 
 	today := time.Now().Format("2006-01-02")
 	filter := db.UsageFilter{
 		From:     today,
 		To:       today,
-		Agent:    *agent,
+		Agent:    cfg.Agent,
 		Timezone: localTimezone(),
 	}
 
@@ -175,9 +215,9 @@ func runUsageStatusline(args []string) {
 		os.Exit(1)
 	}
 
-	if *agent != "" {
+	if cfg.Agent != "" {
 		fmt.Printf("%s today (%s)\n",
-			fmtCost(result.Totals.TotalCost), *agent)
+			fmtCost(result.Totals.TotalCost), cfg.Agent)
 	} else {
 		fmt.Printf("%s today\n",
 			fmtCost(result.Totals.TotalCost))

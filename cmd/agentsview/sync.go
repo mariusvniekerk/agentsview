@@ -55,7 +55,10 @@ func runSync(args []string) {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
+	runSyncConfig(cfg)
+}
 
+func runSyncConfig(cfg SyncConfig) {
 	appCfg, err := config.LoadMinimal()
 	if err != nil {
 		log.Fatalf("loading config: %v", err)

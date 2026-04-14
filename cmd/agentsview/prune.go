@@ -243,6 +243,16 @@ func runPrune(args []string) {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
+	runPruneConfig(cfg)
+}
+
+func runPruneConfig(cfg PruneConfig) {
+	if cfg.Filter.MaxMessages != nil && *cfg.Filter.MaxMessages < 0 {
+		fatal("max-messages must be >= 0")
+	}
+	if !cfg.Filter.HasFilters() {
+		fatal("at least one filter is required\nuse --project, --max-messages, --before, or --first-message")
+	}
 
 	appCfg, err := config.LoadMinimal()
 	if err != nil {

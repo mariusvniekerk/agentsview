@@ -14,6 +14,11 @@ import (
 	"github.com/wesm/agentsview/internal/importer"
 )
 
+type ImportConfig struct {
+	Type string
+	Path string
+}
+
 func runImport(args []string) {
 	fs := flag.NewFlagSet("import", flag.ContinueOnError)
 	importType := fs.String(
@@ -34,8 +39,10 @@ func runImport(args []string) {
 		os.Exit(1)
 	}
 
-	path := fs.Arg(0)
+	runImportConfig(ImportConfig{Type: *importType, Path: fs.Arg(0)})
+}
 
+func runImportConfig(cfg ImportConfig) {
 	appCfg, err := config.LoadMinimal()
 	if err != nil {
 		log.Fatalf("loading config: %v", err)
@@ -50,7 +57,7 @@ func runImport(args []string) {
 	ctx := context.Background()
 
 	// Handle zip files.
-	dir, cleanup, err := resolveImportSource(path)
+	dir, cleanup, err := resolveImportSource(cfg.Path)
 	if err != nil {
 		log.Fatalf("Error: %v", err)
 	}
@@ -60,7 +67,7 @@ func runImport(args []string) {
 
 	var stats importer.ImportStats
 
-	switch *importType {
+	switch cfg.Type {
 	case "claude-ai":
 		stats, err = runClaudeAIImport(ctx, database, dir)
 	case "chatgpt":
@@ -71,7 +78,7 @@ func runImport(args []string) {
 	default:
 		log.Fatalf(
 			"Unknown import type: %s (use claude-ai or chatgpt)",
-			*importType,
+			cfg.Type,
 		)
 	}
 

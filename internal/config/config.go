@@ -176,11 +176,49 @@ func Load(fs *flag.FlagSet) (Config, error) {
 	return cfg, nil
 }
 
+// LoadPFlags builds a Config from a parsed Cobra/pflag FlagSet.
+func LoadPFlags(fs *pflag.FlagSet) (Config, error) {
+	cfg, err := LoadMinimal()
+	if err != nil {
+		return cfg, err
+	}
+	applyPFlags(&cfg, fs)
+	if err := finalize(&cfg); err != nil {
+		return cfg, err
+	}
+	return cfg, nil
+}
+
 // LoadPGServe builds a Config for `pg serve` by preserving
 // shared and PG settings from defaults/env/config file while
 // resetting serve-specific network/browser settings to defaults.
 // Only explicitly provided serve flags are applied on top.
 func LoadPGServe(fs *flag.FlagSet) (Config, error) {
+	cfg, err := loadPGServeBase()
+	if err != nil {
+		return cfg, err
+	}
+	applyFlags(&cfg, fs)
+	if err := finalize(&cfg); err != nil {
+		return cfg, err
+	}
+	return cfg, nil
+}
+
+// LoadPGServePFlags builds a PG serve config from a parsed Cobra/pflag FlagSet.
+func LoadPGServePFlags(fs *pflag.FlagSet) (Config, error) {
+	cfg, err := loadPGServeBase()
+	if err != nil {
+		return cfg, err
+	}
+	applyPFlags(&cfg, fs)
+	if err := finalize(&cfg); err != nil {
+		return cfg, err
+	}
+	return cfg, nil
+}
+
+func loadPGServeBase() (Config, error) {
 	cfg, err := Default()
 	if err != nil {
 		return cfg, err
@@ -207,11 +245,6 @@ func LoadPGServe(fs *flag.FlagSet) (Config, error) {
 	cfg.RemoteAccess = false
 	cfg.NoBrowser = false
 	cfg.HostExplicit = false
-
-	applyFlags(&cfg, fs)
-	if err := finalize(&cfg); err != nil {
-		return cfg, err
-	}
 	return cfg, nil
 }
 
@@ -626,39 +659,52 @@ func applyFlags(cfg *Config, fs *flag.FlagSet) {
 		return
 	}
 	fs.Visit(func(f *flag.Flag) {
-		switch f.Name {
-		case "host":
-			cfg.Host = f.Value.String()
-			cfg.HostExplicit = true
-		case "port":
-			// flag already validated the int; ignore parse error
-			cfg.Port, _ = strconv.Atoi(f.Value.String())
-		case "public-url":
-			cfg.PublicURL = f.Value.String()
-		case "public-origin":
-			cfg.PublicOrigins = splitFlagList(f.Value.String())
-		case "proxy":
-			cfg.Proxy.Mode = f.Value.String()
-		case "caddy-bin":
-			cfg.Proxy.Bin = f.Value.String()
-		case "proxy-bind-host":
-			cfg.Proxy.BindHost = f.Value.String()
-		case "public-port":
-			cfg.Proxy.PublicPort, _ = strconv.Atoi(f.Value.String())
-		case "tls-cert":
-			cfg.Proxy.TLSCert = f.Value.String()
-		case "tls-key":
-			cfg.Proxy.TLSKey = f.Value.String()
-		case "allowed-subnet":
-			cfg.Proxy.AllowedSubnets = splitFlagList(f.Value.String())
-		case "no-browser":
-			cfg.NoBrowser = f.Value.String() == "true"
-		case "no-sync":
-			cfg.NoSync = f.Value.String() == "true"
-		case "no-update-check":
-			cfg.DisableUpdateCheck = f.Value.String() == "true"
-		}
+		applyFlagValue(cfg, f.Name, f.Value.String())
 	})
+}
+
+// applyPFlags copies explicitly-set pflags from fs into cfg.
+func applyPFlags(cfg *Config, fs *pflag.FlagSet) {
+	if fs == nil {
+		return
+	}
+	fs.Visit(func(f *pflag.Flag) {
+		applyFlagValue(cfg, f.Name, f.Value.String())
+	})
+}
+
+func applyFlagValue(cfg *Config, name, value string) {
+	switch name {
+	case "host":
+		cfg.Host = value
+		cfg.HostExplicit = true
+	case "port":
+		cfg.Port, _ = strconv.Atoi(value)
+	case "public-url":
+		cfg.PublicURL = value
+	case "public-origin":
+		cfg.PublicOrigins = splitFlagList(value)
+	case "proxy":
+		cfg.Proxy.Mode = value
+	case "caddy-bin":
+		cfg.Proxy.Bin = value
+	case "proxy-bind-host":
+		cfg.Proxy.BindHost = value
+	case "public-port":
+		cfg.Proxy.PublicPort, _ = strconv.Atoi(value)
+	case "tls-cert":
+		cfg.Proxy.TLSCert = value
+	case "tls-key":
+		cfg.Proxy.TLSKey = value
+	case "allowed-subnet":
+		cfg.Proxy.AllowedSubnets = splitFlagList(value)
+	case "no-browser":
+		cfg.NoBrowser = value == "true"
+	case "no-sync":
+		cfg.NoSync = value == "true"
+	case "no-update-check":
+		cfg.DisableUpdateCheck = value == "true"
+	}
 }
 
 func splitFlagList(value string) []string {

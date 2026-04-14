@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"github.com/wesm/agentsview/internal/config"
+	"github.com/wesm/agentsview/internal/db"
 	"golang.org/x/term"
 )
 
@@ -34,7 +34,7 @@ func newRootCommand() *cobra.Command {
 				printVersion(cmd.OutOrStdout())
 				return
 			}
-			runServe(changedFlagArgs(cmd.Flags()))
+			runServeConfig(mustLoadConfigFromCommand(cmd))
 		},
 	}
 	root.AddGroup(
@@ -86,7 +86,7 @@ func newServeCommand() *cobra.Command {
 		SilenceUsage: true,
 		Args:         cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			runServe(changedFlagArgs(cmd.Flags()))
+			runServeConfig(mustLoadConfigFromCommand(cmd))
 		},
 	}
 	config.RegisterServePFlags(cmd.Flags())
@@ -94,6 +94,7 @@ func newServeCommand() *cobra.Command {
 }
 
 func newSyncCommand() *cobra.Command {
+	var full bool
 	cmd := &cobra.Command{
 		Use:          "sync",
 		Short:        "Sync session data without serving",
@@ -101,10 +102,11 @@ func newSyncCommand() *cobra.Command {
 		SilenceUsage: true,
 		Args:         cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			runSync(changedFlagArgs(cmd.Flags()))
+			runSyncConfig(SyncConfig{Full: full})
 		},
 	}
-	cmd.Flags().Bool(
+	cmd.Flags().BoolVar(
+		&full,
 		"full",
 		false,
 		"Force a full resync regardless of data version",
@@ -113,6 +115,9 @@ func newSyncCommand() *cobra.Command {
 }
 
 func newPruneCommand() *cobra.Command {
+	var project, before, firstMessage string
+	var maxMessages int
+	var dryRun, yes bool
 	cmd := &cobra.Command{
 		Use:          "prune",
 		Short:        "Delete sessions matching filters",
@@ -120,43 +125,33 @@ func newPruneCommand() *cobra.Command {
 		SilenceUsage: true,
 		Args:         cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			runPrune(changedFlagArgs(cmd.Flags()))
+			var mm *int
+			if maxMessages != -1 {
+				mm = &maxMessages
+			}
+			runPruneConfig(PruneConfig{
+				Filter: db.PruneFilter{
+					Project:      project,
+					MaxMessages:  mm,
+					Before:       before,
+					FirstMessage: firstMessage,
+				},
+				DryRun: dryRun,
+				Yes:    yes,
+			})
 		},
 	}
-	cmd.Flags().String(
-		"project",
-		"",
-		"Sessions whose project contains this substring",
-	)
-	cmd.Flags().Int(
-		"max-messages",
-		-1,
-		"Sessions with at most N user messages",
-	)
-	cmd.Flags().String(
-		"before",
-		"",
-		"Sessions that ended before this date (YYYY-MM-DD)",
-	)
-	cmd.Flags().String(
-		"first-message",
-		"",
-		"Sessions whose first message starts with this text",
-	)
-	cmd.Flags().Bool(
-		"dry-run",
-		false,
-		"Show what would be pruned without deleting",
-	)
-	cmd.Flags().Bool(
-		"yes",
-		false,
-		"Skip confirmation prompt",
-	)
+	cmd.Flags().StringVar(&project, "project", "", "Sessions whose project contains this substring")
+	cmd.Flags().IntVar(&maxMessages, "max-messages", -1, "Sessions with at most N user messages")
+	cmd.Flags().StringVar(&before, "before", "", "Sessions that ended before this date (YYYY-MM-DD)")
+	cmd.Flags().StringVar(&firstMessage, "first-message", "", "Sessions whose first message starts with this text")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be pruned without deleting")
+	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompt")
 	return cmd
 }
 
 func newUpdateCommand() *cobra.Command {
+	var cfg UpdateConfig
 	cmd := &cobra.Command{
 		Use:          "update",
 		Short:        "Check for and install updates",
@@ -164,24 +159,12 @@ func newUpdateCommand() *cobra.Command {
 		SilenceUsage: true,
 		Args:         cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			runUpdate(changedFlagArgs(cmd.Flags()))
+			runUpdateConfig(cfg)
 		},
 	}
-	cmd.Flags().Bool(
-		"check",
-		false,
-		"Check for updates without installing",
-	)
-	cmd.Flags().Bool(
-		"yes",
-		false,
-		"Install without confirmation prompt",
-	)
-	cmd.Flags().Bool(
-		"force",
-		false,
-		"Force check (ignore cache)",
-	)
+	cmd.Flags().BoolVar(&cfg.Check, "check", false, "Check for updates without installing")
+	cmd.Flags().BoolVar(&cfg.Yes, "yes", false, "Install without confirmation prompt")
+	cmd.Flags().BoolVar(&cfg.Force, "force", false, "Force check (ignore cache)")
 	return cmd
 }
 
@@ -199,6 +182,7 @@ func newTokenUseCommand() *cobra.Command {
 }
 
 func newImportCommand() *cobra.Command {
+	var importType string
 	cmd := &cobra.Command{
 		Use:          "import --type <type> <path>",
 		Short:        "Import conversations",
@@ -206,19 +190,16 @@ func newImportCommand() *cobra.Command {
 		SilenceUsage: true,
 		Args:         cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			runImport(append(changedFlagArgs(cmd.Flags()), args...))
+			runImportConfig(ImportConfig{Type: importType, Path: args[0]})
 		},
 	}
-	cmd.Flags().String(
-		"type",
-		"",
-		"Import type: claude-ai, chatgpt",
-	)
+	cmd.Flags().StringVar(&importType, "type", "", "Import type: claude-ai, chatgpt")
 	_ = cmd.MarkFlagRequired("type")
 	return cmd
 }
 
 func newProjectsCommand() *cobra.Command {
+	var jsonOutput bool
 	cmd := &cobra.Command{
 		Use:          "projects",
 		Short:        "List projects with session counts",
@@ -226,10 +207,10 @@ func newProjectsCommand() *cobra.Command {
 		SilenceUsage: true,
 		Args:         cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			runProjects(changedFlagArgs(cmd.Flags()))
+			runProjectsConfig(jsonOutput)
 		},
 	}
-	cmd.Flags().Bool("json", false, "Output as JSON array")
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON array")
 	return cmd
 }
 
@@ -250,60 +231,42 @@ func newUsageCommand() *cobra.Command {
 }
 
 func newUsageDailyCommand() *cobra.Command {
+	var cfg UsageDailyConfig
 	cmd := &cobra.Command{
 		Use:          "daily",
 		Short:        "Daily cost summary",
 		SilenceUsage: true,
 		Args:         cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			runUsageDaily(changedFlagArgs(cmd.Flags()))
+			runUsageDailyConfig(cfg)
 		},
 	}
-	cmd.Flags().Bool("json", false, "Output as JSON")
-	cmd.Flags().String("since", "", "Start date (YYYY-MM-DD)")
-	cmd.Flags().String("until", "", "End date (YYYY-MM-DD)")
-	cmd.Flags().Bool(
-		"all",
-		false,
-		"Include all history (overrides default 30-day window)",
-	)
-	cmd.Flags().String("agent", "", "Filter by agent name")
-	cmd.Flags().Bool(
-		"breakdown",
-		false,
-		"Show per-model breakdown rows",
-	)
-	cmd.Flags().Bool("offline", false, "Use fallback pricing only")
-	cmd.Flags().Bool(
-		"no-sync",
-		false,
-		"Skip on-demand sync before querying",
-	)
-	cmd.Flags().String(
-		"timezone",
-		"",
-		"IANA timezone for date bucketing",
-	)
+	cmd.Flags().BoolVar(&cfg.JSON, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&cfg.Since, "since", "", "Start date (YYYY-MM-DD)")
+	cmd.Flags().StringVar(&cfg.Until, "until", "", "End date (YYYY-MM-DD)")
+	cmd.Flags().BoolVar(&cfg.All, "all", false, "Include all history (overrides default 30-day window)")
+	cmd.Flags().StringVar(&cfg.Agent, "agent", "", "Filter by agent name")
+	cmd.Flags().BoolVar(&cfg.Breakdown, "breakdown", false, "Show per-model breakdown rows")
+	cmd.Flags().BoolVar(&cfg.Offline, "offline", false, "Use fallback pricing only")
+	cmd.Flags().BoolVar(&cfg.NoSync, "no-sync", false, "Skip on-demand sync before querying")
+	cmd.Flags().StringVar(&cfg.Timezone, "timezone", "", "IANA timezone for date bucketing")
 	return cmd
 }
 
 func newUsageStatuslineCommand() *cobra.Command {
+	var cfg UsageStatuslineConfig
 	cmd := &cobra.Command{
 		Use:          "statusline",
 		Short:        "One-line cost summary for today",
 		SilenceUsage: true,
 		Args:         cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			runUsageStatusline(changedFlagArgs(cmd.Flags()))
+			runUsageStatuslineConfig(cfg)
 		},
 	}
-	cmd.Flags().String("agent", "", "Filter by agent name")
-	cmd.Flags().Bool("offline", false, "Use fallback pricing only")
-	cmd.Flags().Bool(
-		"no-sync",
-		false,
-		"Skip on-demand sync before querying",
-	)
+	cmd.Flags().StringVar(&cfg.Agent, "agent", "", "Filter by agent name")
+	cmd.Flags().BoolVar(&cfg.Offline, "offline", false, "Use fallback pricing only")
+	cmd.Flags().BoolVar(&cfg.NoSync, "no-sync", false, "Skip on-demand sync before querying")
 	return cmd
 }
 
@@ -325,31 +288,20 @@ func newPGCommand() *cobra.Command {
 }
 
 func newPGPushCommand() *cobra.Command {
+	var cfg PGPushConfig
 	cmd := &cobra.Command{
 		Use:          "push",
 		Short:        "Push local data to PostgreSQL",
 		SilenceUsage: true,
 		Args:         cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			runPGPush(changedFlagArgs(cmd.Flags()))
+			runPGPushConfig(cfg)
 		},
 	}
-	cmd.Flags().Bool("full", false, "Force full local resync and PG push")
-	cmd.Flags().String(
-		"projects",
-		"",
-		"Comma-separated list of projects to push (inclusive)",
-	)
-	cmd.Flags().String(
-		"exclude-projects",
-		"",
-		"Comma-separated list of projects to exclude from push",
-	)
-	cmd.Flags().Bool(
-		"all-projects",
-		false,
-		"Ignore configured project filters for this run",
-	)
+	cmd.Flags().BoolVar(&cfg.Full, "full", false, "Force full local resync and PG push")
+	cmd.Flags().StringVar(&cfg.ProjectsFlag, "projects", "", "Comma-separated list of projects to push (inclusive)")
+	cmd.Flags().StringVar(&cfg.ExcludeProjects, "exclude-projects", "", "Comma-separated list of projects to exclude from push")
+	cmd.Flags().BoolVar(&cfg.AllProjects, "all-projects", false, "Ignore configured project filters for this run")
 	return cmd
 }
 
@@ -372,7 +324,11 @@ func newPGServeCommand() *cobra.Command {
 		SilenceUsage: true,
 		Args:         cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			runPGServe(changedFlagArgs(cmd.Flags()))
+			appCfg, basePath, err := loadPGServeConfigFromCommand(cmd)
+			if err != nil {
+				fatal("%v", err)
+			}
+			runPGServeConfig(appCfg, basePath)
 		},
 	}
 	cmd.Flags().String(
@@ -395,29 +351,6 @@ func newVersionCommand() *cobra.Command {
 			printVersion(cmd.OutOrStdout())
 		},
 	}
-}
-
-func changedFlagArgs(fs *pflag.FlagSet) []string {
-	if fs == nil {
-		return nil
-	}
-	args := make([]string, 0, fs.NFlag()*2)
-	fs.VisitAll(func(f *pflag.Flag) {
-		if !f.Changed {
-			return
-		}
-		name := "--" + f.Name
-		if f.Value.Type() == "bool" {
-			if f.Value.String() == "true" {
-				args = append(args, name)
-			} else {
-				args = append(args, name+"="+f.Value.String())
-			}
-			return
-		}
-		args = append(args, name, f.Value.String())
-	})
-	return args
 }
 
 func printVersion(w io.Writer) {

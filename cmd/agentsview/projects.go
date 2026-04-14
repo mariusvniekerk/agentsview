@@ -19,7 +19,10 @@ func runProjects(args []string) {
 	if err := fs.Parse(args); err != nil {
 		log.Fatalf("parsing flags: %v", err)
 	}
+	runProjectsConfig(*jsonOutput)
+}
 
+func runProjectsConfig(jsonOutput bool) {
 	appCfg, err := config.LoadMinimal()
 	if err != nil {
 		log.Fatalf("loading config: %v", err)
@@ -37,7 +40,7 @@ func runProjects(args []string) {
 		fatal("listing projects: %v", err)
 	}
 
-	if *jsonOutput {
+	if jsonOutput {
 		if projects == nil {
 			projects = []db.ProjectInfo{}
 		}

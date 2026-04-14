@@ -14,6 +14,7 @@ import (
 	"time"
 	_ "time/tzdata"
 
+	"github.com/spf13/cobra"
 	"github.com/wesm/agentsview/internal/config"
 	"github.com/wesm/agentsview/internal/db"
 	"github.com/wesm/agentsview/internal/parser"
@@ -162,8 +163,11 @@ func warnMissingDirs(dirs []string, label string) {
 }
 
 func runServe(args []string) {
+	runServeConfig(mustLoadConfig(args))
+}
+
+func runServeConfig(cfg config.Config) {
 	start := time.Now()
-	cfg := mustLoadConfig(args)
 	setupLogFile(cfg.DataDir)
 
 	if err := validateServeConfig(cfg); err != nil {
@@ -326,7 +330,21 @@ func mustLoadConfig(args []string) config.Config {
 	if err := fs.Parse(args); err != nil {
 		log.Fatalf("parsing flags: %v", err)
 	}
+	return mustLoadParsedConfig(fs)
+}
 
+func mustLoadConfigFromCommand(cmd *cobra.Command) config.Config {
+	cfg, err := config.LoadPFlags(cmd.Flags())
+	if err != nil {
+		log.Fatalf("loading config: %v", err)
+	}
+	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+		log.Fatalf("creating data dir: %v", err)
+	}
+	return cfg
+}
+
+func mustLoadParsedConfig(fs *flag.FlagSet) config.Config {
 	cfg, err := config.Load(fs)
 	if err != nil {
 		log.Fatalf("loading config: %v", err)

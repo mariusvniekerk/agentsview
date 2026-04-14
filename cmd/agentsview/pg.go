@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/wesm/agentsview/internal/config"
 	"github.com/wesm/agentsview/internal/db"
 	"github.com/wesm/agentsview/internal/postgres"
@@ -39,6 +40,13 @@ func runPG(args []string) {
 	}
 }
 
+type PGPushConfig struct {
+	Full            bool
+	ProjectsFlag    string
+	ExcludeProjects string
+	AllProjects     bool
+}
+
 func runPGPush(args []string) {
 	fs := flag.NewFlagSet("pg push", flag.ExitOnError)
 	full := fs.Bool("full", false,
@@ -53,12 +61,21 @@ func runPGPush(args []string) {
 		log.Fatalf("parsing flags: %v", err)
 	}
 
-	if *projectsFlag != "" && *excludeProjectsFlag != "" {
+	runPGPushConfig(PGPushConfig{
+		Full:            *full,
+		ProjectsFlag:    *projectsFlag,
+		ExcludeProjects: *excludeProjectsFlag,
+		AllProjects:     *allProjects,
+	})
+}
+
+func runPGPushConfig(cfg PGPushConfig) {
+	if cfg.ProjectsFlag != "" && cfg.ExcludeProjects != "" {
 		fatal("pg push: --projects and --exclude-projects " +
 			"are mutually exclusive")
 	}
-	if *allProjects &&
-		(*projectsFlag != "" || *excludeProjectsFlag != "") {
+	if cfg.AllProjects &&
+		(cfg.ProjectsFlag != "" || cfg.ExcludeProjects != "") {
 		fatal("pg push: --all-projects cannot be combined " +
 			"with --projects or --exclude-projects")
 	}
@@ -86,16 +103,16 @@ func runPGPush(args []string) {
 	// --all-projects clears both lists for an unfiltered push.
 	projects := pgCfg.Projects
 	excludeProjects := pgCfg.ExcludeProjects
-	if *allProjects {
+	if cfg.AllProjects {
 		projects = nil
 		excludeProjects = nil
 	}
-	if *projectsFlag != "" {
-		projects = splitProjectList(*projectsFlag)
+	if cfg.ProjectsFlag != "" {
+		projects = splitProjectList(cfg.ProjectsFlag)
 		excludeProjects = nil
 	}
-	if *excludeProjectsFlag != "" {
-		excludeProjects = splitProjectList(*excludeProjectsFlag)
+	if cfg.ExcludeProjects != "" {
+		excludeProjects = splitProjectList(cfg.ExcludeProjects)
 		projects = nil
 	}
 
@@ -124,8 +141,8 @@ func runPGPush(args []string) {
 	// are available for push. If a full resync was performed
 	// (e.g. due to data version change), force a full PG push
 	// since watermarks become stale after a local rebuild.
-	didResync := runLocalSync(appCfg, database, *full)
-	forceFull := *full || didResync
+	didResync := runLocalSync(appCfg, database, cfg.Full)
+	forceFull := cfg.Full || didResync
 
 	ps, err := postgres.New(
 		pgCfg.URL, pgCfg.Schema, database,
@@ -227,7 +244,25 @@ func loadPGServeConfig(args []string) (config.Config, string, error) {
 	if err := fs.Parse(args); err != nil {
 		return config.Config{}, "", fmt.Errorf("parsing flags: %w", err)
 	}
+	return loadPGServeParsedConfig(fs, *basePath)
+}
 
+func loadPGServeConfigFromCommand(cmd *cobra.Command) (config.Config, string, error) {
+	basePath, err := cmd.Flags().GetString("base-path")
+	if err != nil {
+		return config.Config{}, "", fmt.Errorf("reading base-path: %w", err)
+	}
+	cfg, err := config.LoadPGServePFlags(cmd.Flags())
+	if err != nil {
+		return config.Config{}, "", fmt.Errorf("loading config: %w", err)
+	}
+	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+		return config.Config{}, "", fmt.Errorf("creating data dir: %w", err)
+	}
+	return cfg, basePath, nil
+}
+
+func loadPGServeParsedConfig(fs *flag.FlagSet, basePath string) (config.Config, string, error) {
 	cfg, err := config.LoadPGServe(fs)
 	if err != nil {
 		return config.Config{}, "", fmt.Errorf("loading config: %w", err)
@@ -235,7 +270,7 @@ func loadPGServeConfig(args []string) (config.Config, string, error) {
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		return config.Config{}, "", fmt.Errorf("creating data dir: %w", err)
 	}
-	return cfg, *basePath, nil
+	return cfg, basePath, nil
 }
 
 func runPGServe(args []string) {
@@ -243,6 +278,10 @@ func runPGServe(args []string) {
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
+	runPGServeConfig(appCfg, basePath)
+}
+
+func runPGServeConfig(appCfg config.Config, basePath string) {
 	setupLogFile(appCfg.DataDir)
 	// Enable remote access with auth when binding to a
 	// non-loopback address; keep it off for localhost.

@@ -5,20 +5,30 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
-func TestRootHelpShowsKeySectionsAndCommands(t *testing.T) {
-	cmd := newRootCommand()
-	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"--help"})
+func executeCommand(root *cobra.Command, args ...string) (string, error) {
+	_, output, err := executeCommandC(root, args...)
+	return output, err
+}
 
-	if err := cmd.Execute(); err != nil {
+func executeCommandC(root *cobra.Command, args ...string) (*cobra.Command, string, error) {
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetErr(buf)
+	root.SetArgs(args)
+
+	cmd, err := root.ExecuteC()
+	return cmd, buf.String(), err
+}
+
+func TestRootHelpShowsKeySectionsAndCommands(t *testing.T) {
+	help, err := executeCommand(newRootCommand(), "--help")
+	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-
-	help := out.String()
 	for _, want := range []string{
 		"Usage:\n  agentsview [flags]\n  agentsview <command> [flags]",
 		"Core Commands:",
@@ -40,17 +50,10 @@ func TestRootHelpShowsKeySectionsAndCommands(t *testing.T) {
 }
 
 func TestRootHelpKeepsSummaryClean(t *testing.T) {
-	cmd := newRootCommand()
-	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"--help"})
-
-	if err := cmd.Execute(); err != nil {
+	help, err := executeCommand(newRootCommand(), "--help")
+	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-
-	help := out.String()
 	for _, unwanted := range []string{
 		"agentsview serve [flags]",
 		"\nCommands:\n",
@@ -101,17 +104,10 @@ func TestFlagHelpWidthFallback(t *testing.T) {
 }
 
 func TestRootVersionFlag(t *testing.T) {
-	cmd := newRootCommand()
-	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"--version"})
-
-	if err := cmd.Execute(); err != nil {
+	got, err := executeCommand(newRootCommand(), "--version")
+	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-
-	got := out.String()
 	if !strings.Contains(got, "agentsview ") {
 		t.Fatalf("version output = %q", got)
 	}

@@ -12,6 +12,12 @@ import (
 	"github.com/wesm/agentsview/internal/update"
 )
 
+type UpdateConfig struct {
+	Check bool
+	Yes   bool
+	Force bool
+}
+
 func runUpdate(args []string) {
 	fs := flag.NewFlagSet("update", flag.ExitOnError)
 	check := fs.Bool("check", false,
@@ -30,13 +36,21 @@ func runUpdate(args []string) {
 		log.Fatalf("parsing flags: %v", err)
 	}
 
+	runUpdateConfig(UpdateConfig{
+		Check: *check,
+		Yes:   *yes,
+		Force: *force,
+	})
+}
+
+func runUpdateConfig(cfg UpdateConfig) {
 	dataDir, err := config.ResolveDataDir()
 	if err != nil {
 		log.Fatalf("resolving data dir: %v", err)
 	}
 
 	info, err := update.CheckForUpdate(
-		version, *force, dataDir,
+		version, cfg.Force, dataDir,
 	)
 	if err != nil {
 		log.Fatalf("checking for updates: %v", err)
@@ -55,7 +69,7 @@ func runUpdate(args []string) {
 				"Latest release: %s\n",
 			info.CurrentVersion, info.LatestVersion,
 		)
-		if *check {
+		if cfg.Check {
 			return
 		}
 		// Cache-only results lack download metadata; re-fetch.
@@ -82,12 +96,12 @@ func runUpdate(args []string) {
 			)
 		}
 		fmt.Println()
-		if *check {
+		if cfg.Check {
 			return
 		}
 	}
 
-	if !*yes {
+	if !cfg.Yes {
 		fmt.Print("Install update? [y/N] ")
 		reader := bufio.NewReader(os.Stdin)
 		answer, _ := reader.ReadString('\n')
