@@ -56,7 +56,7 @@ func TestRootHelpGroupsCompletionAtBottom(t *testing.T) {
 		"Core Commands:",
 		"Data Commands:",
 		"Other Commands:",
-		"agentsview completion",
+		"completion             Generate the autocompletion script for the specified shell",
 	} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("help missing %q\n%s", want, help)
@@ -66,8 +66,8 @@ func TestRootHelpGroupsCompletionAtBottom(t *testing.T) {
 	core := strings.Index(help, "Core Commands:")
 	data := strings.Index(help, "Data Commands:")
 	other := strings.Index(help, "Other Commands:")
-	completion := strings.Index(help, "agentsview completion")
-	serve := strings.Index(help, "agentsview serve [flags]")
+	completion := strings.Index(help, "completion             Generate the autocompletion script for the specified shell")
+	serve := strings.Index(help, "serve                  Start server")
 	if !(core >= 0 && data > core && other > data) {
 		t.Fatalf("unexpected group order\n%s", help)
 	}
@@ -76,6 +76,31 @@ func TestRootHelpGroupsCompletionAtBottom(t *testing.T) {
 	}
 	if serve > other {
 		t.Fatalf("serve command placed after other commands\n%s", help)
+	}
+}
+
+func TestRootHelpDoesNotDuplicateCommandListings(t *testing.T) {
+	cmd := newRootCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	help := out.String()
+	if strings.Contains(help, "agentsview serve [flags]") {
+		t.Fatalf("usage duplicates command listings\n%s", help)
+	}
+	for _, want := range []string{
+		"Usage:\n  agentsview [flags]\n  agentsview <command>",
+		"Commands:\nCore Commands:",
+	} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("help missing %q\n%s", want, help)
+		}
 	}
 }
 

@@ -397,16 +397,7 @@ func writeRootHelp(w io.Writer, root *cobra.Command) {
 func renderRootUsage(w io.Writer, root *cobra.Command) {
 	fmt.Fprintln(w, "Usage:")
 	fmt.Fprintf(w, "  %s [flags]\n", root.CommandPath())
-	for _, group := range root.Groups() {
-		cmds := groupedRootCommands(root, group.ID)
-		if len(cmds) == 0 {
-			continue
-		}
-		fmt.Fprintf(w, "\n%s\n", group.Title)
-		for _, cmd := range cmds {
-			fmt.Fprintf(w, "  %s\n", commandUsage(root, cmd))
-		}
-	}
+	fmt.Fprintf(w, "  %s <command> [flags]\n", root.CommandPath())
 }
 
 func renderRootCommands(w io.Writer, root *cobra.Command) {
