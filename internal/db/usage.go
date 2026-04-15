@@ -730,7 +730,7 @@ func (db *DB) GetTopSessionsByCost(
 	query := `
 SELECT
 	s.id,
-	COALESCE(s.display_name, s.id),
+	COALESCE(NULLIF(s.display_name, ''), NULLIF(s.first_message, ''), s.project, s.id),
 	s.agent,
 	s.project,
 	COALESCE(s.started_at, ''),
