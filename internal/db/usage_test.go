@@ -1144,6 +1144,92 @@ func TestGetTopSessionsByCost(t *testing.T) {
 	}
 }
 
+func TestGetTopSessionsByCost_DisplayNameFallback(t *testing.T) {
+	d := testDB(t)
+	ctx := context.Background()
+
+	requireNoError(t, d.UpsertModelPricing([]ModelPricing{{
+		ModelPattern:         "claude-sonnet",
+		InputPerMTok:         3.0,
+		OutputPerMTok:        15.0,
+		CacheCreationPerMTok: 3.75,
+		CacheReadPerMTok:     0.30,
+	}}), "UpsertModelPricing")
+
+	tokenJSON := `{"input_tokens":100,"output_tokens":50,` +
+		`"cache_creation_input_tokens":0,"cache_read_input_tokens":0}`
+
+	// Session with display_name set — should use display_name.
+	insertSession(t, d, "s-dn", "proj-a", func(s *Session) {
+		s.Agent = "claude"
+		s.DisplayName = Ptr("My Custom Name")
+		s.FirstMessage = Ptr("some first message")
+		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+	})
+	insertMessages(t, d, Message{
+		SessionID: "s-dn", Ordinal: 0,
+		Role: "assistant", Timestamp: "2024-06-15T10:01:00Z",
+		Model: "claude-sonnet",
+		TokenUsage: json.RawMessage(tokenJSON),
+	})
+
+	// Session with no display_name — should fall back to first_message.
+	insertSession(t, d, "s-fm", "proj-a", func(s *Session) {
+		s.Agent = "claude"
+		s.FirstMessage = Ptr("fix the login bug")
+		s.StartedAt = Ptr("2024-06-15T11:00:00Z")
+	})
+	insertMessages(t, d, Message{
+		SessionID: "s-fm", Ordinal: 0,
+		Role: "assistant", Timestamp: "2024-06-15T11:01:00Z",
+		Model: "claude-sonnet",
+		TokenUsage: json.RawMessage(tokenJSON),
+	})
+
+	// Session with no display_name and no first_message — should
+	// fall back to project.
+	insertSession(t, d, "s-proj", "my-project", func(s *Session) {
+		s.Agent = "claude"
+		s.StartedAt = Ptr("2024-06-15T12:00:00Z")
+	})
+	insertMessages(t, d, Message{
+		SessionID: "s-proj", Ordinal: 0,
+		Role: "assistant", Timestamp: "2024-06-15T12:01:00Z",
+		Model: "claude-sonnet",
+		TokenUsage: json.RawMessage(tokenJSON),
+	})
+
+	top, err := d.GetTopSessionsByCost(ctx, UsageFilter{
+		From: "2024-06-01",
+		To:   "2024-06-30",
+	}, 20)
+	requireNoError(t, err, "GetTopSessionsByCost fallback")
+
+	if len(top) != 3 {
+		t.Fatalf("got %d entries, want 3", len(top))
+	}
+
+	// Build a map for easy lookup (order is by cost, all equal
+	// here so secondary sort is by session ID).
+	byID := make(map[string]TopSessionEntry)
+	for _, e := range top {
+		byID[e.SessionID] = e
+	}
+
+	if got := byID["s-dn"].DisplayName; got != "My Custom Name" {
+		t.Errorf("s-dn DisplayName = %q, want %q",
+			got, "My Custom Name")
+	}
+	if got := byID["s-fm"].DisplayName; got != "fix the login bug" {
+		t.Errorf("s-fm DisplayName = %q, want %q",
+			got, "fix the login bug")
+	}
+	if got := byID["s-proj"].DisplayName; got != "my-project" {
+		t.Errorf("s-proj DisplayName = %q, want %q",
+			got, "my-project")
+	}
+}
+
 // TestGetTopSessionsByCost_DedupesByClaudeMessageAndRequestID
 // mirrors TestGetDailyUsage_DedupesByClaudeMessageAndRequestID
 // for the top-sessions query: a parent session and a forked
