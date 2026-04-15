@@ -1169,7 +1169,7 @@ func TestGetTopSessionsByCost_DisplayNameFallback(t *testing.T) {
 	insertMessages(t, d, Message{
 		SessionID: "s-dn", Ordinal: 0,
 		Role: "assistant", Timestamp: "2024-06-15T10:01:00Z",
-		Model: "claude-sonnet",
+		Model:      "claude-sonnet",
 		TokenUsage: json.RawMessage(tokenJSON),
 	})
 
@@ -1182,7 +1182,7 @@ func TestGetTopSessionsByCost_DisplayNameFallback(t *testing.T) {
 	insertMessages(t, d, Message{
 		SessionID: "s-fm", Ordinal: 0,
 		Role: "assistant", Timestamp: "2024-06-15T11:01:00Z",
-		Model: "claude-sonnet",
+		Model:      "claude-sonnet",
 		TokenUsage: json.RawMessage(tokenJSON),
 	})
 
@@ -1195,7 +1195,20 @@ func TestGetTopSessionsByCost_DisplayNameFallback(t *testing.T) {
 	insertMessages(t, d, Message{
 		SessionID: "s-proj", Ordinal: 0,
 		Role: "assistant", Timestamp: "2024-06-15T12:01:00Z",
-		Model: "claude-sonnet",
+		Model:      "claude-sonnet",
+		TokenUsage: json.RawMessage(tokenJSON),
+	})
+
+	// Session with no display_name, no first_message, and empty
+	// project — should fall back to session ID.
+	insertSession(t, d, "s-id", "", func(s *Session) {
+		s.Agent = "claude"
+		s.StartedAt = Ptr("2024-06-15T13:00:00Z")
+	})
+	insertMessages(t, d, Message{
+		SessionID: "s-id", Ordinal: 0,
+		Role: "assistant", Timestamp: "2024-06-15T13:01:00Z",
+		Model:      "claude-sonnet",
 		TokenUsage: json.RawMessage(tokenJSON),
 	})
 
@@ -1205,8 +1218,8 @@ func TestGetTopSessionsByCost_DisplayNameFallback(t *testing.T) {
 	}, 20)
 	requireNoError(t, err, "GetTopSessionsByCost fallback")
 
-	if len(top) != 3 {
-		t.Fatalf("got %d entries, want 3", len(top))
+	if len(top) != 4 {
+		t.Fatalf("got %d entries, want 4", len(top))
 	}
 
 	// Build a map for easy lookup (order is by cost, all equal
@@ -1227,6 +1240,10 @@ func TestGetTopSessionsByCost_DisplayNameFallback(t *testing.T) {
 	if got := byID["s-proj"].DisplayName; got != "my-project" {
 		t.Errorf("s-proj DisplayName = %q, want %q",
 			got, "my-project")
+	}
+	if got := byID["s-id"].DisplayName; got != "s-id" {
+		t.Errorf("s-id DisplayName = %q, want %q",
+			got, "s-id")
 	}
 }
 
