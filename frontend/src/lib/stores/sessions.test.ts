@@ -98,6 +98,51 @@ describe("SessionsStore", () => {
       expect(sessions.filters.minMessages).toBe(0);
       expect(sessions.filters.maxMessages).toBe(0);
     });
+
+    it("should reset existing filters when called with empty params", () => {
+      // Set non-default filters first
+      sessions.filters.project = "myproj";
+      sessions.filters.agent = "claude";
+      sessions.filters.date = "2024-06-15";
+      sessions.filters.dateFrom = "2024-06-01";
+      sessions.filters.dateTo = "2024-06-30";
+      sessions.filters.machine = "host-a";
+      sessions.filters.minMessages = 5;
+      sessions.filters.maxMessages = 100;
+      sessions.filters.recentlyActive = true;
+      sessions.filters.hideUnknownProject = true;
+
+      // Calling initFromParams with empty params resets everything.
+      // This is why the caller (App.svelte) must guard this call to
+      // only run on the sessions route — otherwise switching tabs
+      // would clear filters.
+      sessions.initFromParams({});
+
+      expect(sessions.filters.project).toBe("");
+      expect(sessions.filters.agent).toBe("");
+      expect(sessions.filters.date).toBe("");
+      expect(sessions.filters.dateFrom).toBe("");
+      expect(sessions.filters.dateTo).toBe("");
+      expect(sessions.filters.machine).toBe("");
+      expect(sessions.filters.minMessages).toBe(0);
+      expect(sessions.filters.maxMessages).toBe(0);
+      expect(sessions.filters.recentlyActive).toBe(false);
+      expect(sessions.filters.hideUnknownProject).toBe(false);
+    });
+
+    it("should preserve only URL-present params when reinitializing", () => {
+      // Simulate: user has project+agent filters, then navigates
+      // back to /sessions?project=myproj (agent not in URL).
+      sessions.filters.project = "myproj";
+      sessions.filters.agent = "claude";
+      sessions.filters.minMessages = 5;
+
+      sessions.initFromParams({ project: "myproj" });
+
+      expect(sessions.filters.project).toBe("myproj");
+      expect(sessions.filters.agent).toBe("");
+      expect(sessions.filters.minMessages).toBe(0);
+    });
   });
 
   describe("load serialization", () => {

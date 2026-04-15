@@ -67,6 +67,39 @@ async function loadStore() {
   return import("./usage.svelte.js");
 }
 
+describe("UsageStore filter persistence", () => {
+  beforeEach(() => {
+    installStorage();
+    localStorage.removeItem(TOGGLES_KEY);
+    vi.clearAllMocks();
+  });
+
+  it("preserves exclude filters on the singleton store instance", async () => {
+    const { usage } = await loadStore();
+
+    usage.excludedProjects = "proj-a,proj-b";
+    usage.excludedAgents = "claude";
+    usage.excludedModels = "opus";
+
+    // Accessing the same module-level singleton preserves state.
+    // This is why the UsagePage URL-init must not blindly clear
+    // excludes on remount — the store retains the user's choices.
+    expect(usage.excludedProjects).toBe("proj-a,proj-b");
+    expect(usage.excludedAgents).toBe("claude");
+    expect(usage.excludedModels).toBe("opus");
+  });
+
+  it("preserves date range across accesses", async () => {
+    const { usage } = await loadStore();
+
+    usage.from = "2024-06-01";
+    usage.to = "2024-06-30";
+
+    expect(usage.from).toBe("2024-06-01");
+    expect(usage.to).toBe("2024-06-30");
+  });
+});
+
 describe("UsageStore group-by linking", () => {
   beforeEach(() => {
     installStorage();
