@@ -176,6 +176,9 @@ func (s *Server) routes() {
 		"GET /api/v1/sessions/{id}/export", http.HandlerFunc(s.handleExportSession),
 	)
 	s.mux.Handle(
+		"GET /api/v1/sessions/{id}/md", http.HandlerFunc(s.handleMarkdownSession),
+	)
+	s.mux.Handle(
 		"POST /api/v1/sessions/{id}/publish", s.withTimeout(s.handlePublishSession),
 	)
 	s.mux.Handle(

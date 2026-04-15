@@ -905,6 +905,14 @@ func TestGetChildSessions(t *testing.T) {
 		s.EndedAt = Ptr("2024-06-01T10:15:00Z")
 		s.MessageCount = 4
 	})
+	insertSession(t, d, "child-deleted", "proj", func(s *Session) {
+		s.ParentSessionID = Ptr("parent-1")
+		s.RelationshipType = "subagent"
+		s.StartedAt = Ptr("2024-06-01T10:07:00Z")
+		s.EndedAt = Ptr("2024-06-01T10:08:00Z")
+		s.MessageCount = 1
+	})
+	requireNoError(t, d.SoftDeleteSession("child-deleted"), "SoftDeleteSession")
 
 	// Insert an unrelated session (no parent).
 	insertSession(t, d, "unrelated", "proj", func(s *Session) {
@@ -918,7 +926,7 @@ func TestGetChildSessions(t *testing.T) {
 		)
 		requireNoError(t, err, "GetChildSessions")
 		if len(children) != 3 {
-			t.Fatalf("expected 3 children, got %d", len(children))
+			t.Fatalf("expected 3 visible children, got %d", len(children))
 		}
 		// Ordered by started_at ascending.
 		wantIDs := []string{"child-sub", "child-cont", "child-fork"}

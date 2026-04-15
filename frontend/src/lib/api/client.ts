@@ -441,6 +441,21 @@ export function getExportUrl(sessionId: string): string {
   return `${getBase()}/sessions/${sessionId}/export`;
 }
 
+/** Get markdown export URL for a session, with optional child depth. */
+export function getMarkdownExportUrl(
+  sessionId: string,
+  depth?: 1 | "all",
+): string {
+  const url = new URL(
+    `${getBase()}/sessions/${sessionId}/md`,
+    window.location.origin,
+  );
+  if (depth !== undefined) {
+    url.searchParams.set("depth", String(depth));
+  }
+  return `${url.pathname}${url.search}`;
+}
+
 /** Download a session export using fetch with auth headers,
  *  avoiding token leakage in the URL for remote connections. */
 export async function downloadExport(sessionId: string): Promise<void> {
