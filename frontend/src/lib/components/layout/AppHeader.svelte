@@ -189,7 +189,7 @@
       class="hamburger"
       onclick={() => {
         if (ui.isMobileViewport && router.route !== "sessions") {
-          router.navigate("sessions");
+          router.navigate("sessions", sessions.filterParams);
           ui.sidebarOpen = true;
         } else {
           ui.toggleSidebar();
@@ -204,7 +204,7 @@
     </button>
     <button
       class="header-home"
-      onclick={() => router.navigate("sessions")}
+      onclick={() => router.navigate("sessions", sessions.filterParams)}
       title="Home"
     >
       <svg class="header-logo" width="18" height="18" viewBox="0 0 32 32" aria-hidden="true">
@@ -226,7 +226,7 @@
     <button
       class="nav-btn"
       class:active={router.route === "sessions"}
-      onclick={() => router.navigate("sessions")}
+      onclick={() => router.navigate("sessions", sessions.filterParams)}
       title="Sessions"
       aria-label="Sessions"
     >

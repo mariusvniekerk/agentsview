@@ -266,26 +266,6 @@
     });
   });
 
-  // Build URL params from current session filters.
-  function buildFilterParams(): Record<string, string> {
-    const f = sessions.filters;
-    const p: Record<string, string> = {};
-    if (f.project) p.project = f.project;
-    if (f.machine) p.machine = f.machine;
-    if (f.agent) p.agent = f.agent;
-    if (f.date) p.date = f.date;
-    if (f.dateFrom) p.date_from = f.dateFrom;
-    if (f.dateTo) p.date_to = f.dateTo;
-    if (f.recentlyActive) p.active_since = "true";
-    if (f.hideUnknownProject) p.exclude_project = "unknown";
-    if (f.minMessages > 0) p.min_messages = String(f.minMessages);
-    if (f.maxMessages > 0) p.max_messages = String(f.maxMessages);
-    if (f.minUserMessages > 0) p.min_user_messages = String(f.minUserMessages);
-    if (!f.includeOneShot) p.include_one_shot = "false";
-    if (f.includeAutomated) p.include_automated = "true";
-    return p;
-  }
-
   // Sync active session to URL.
   $effect(() => {
     const activeId = sessions.activeSessionId;
@@ -296,7 +276,7 @@
       if (activeId) {
         router.navigateToSession(activeId);
       } else {
-        router.navigateFromSession(buildFilterParams());
+        router.navigateFromSession(sessions.filterParams);
       }
     });
   });

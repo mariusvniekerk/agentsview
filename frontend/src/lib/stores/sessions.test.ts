@@ -143,6 +143,91 @@ describe("SessionsStore", () => {
       expect(sessions.filters.agent).toBe("");
       expect(sessions.filters.minMessages).toBe(0);
     });
+
+    it("should round-trip through filterParams without loss", () => {
+      // Simulates the tab-switch flow: user sets filters, navigates
+      // away, then navigates back to /sessions with filterParams in
+      // the URL. initFromParams(filterParams) must restore the same
+      // filter state.
+      sessions.filters.project = "myproj";
+      sessions.filters.agent = "claude";
+      sessions.filters.machine = "host-a";
+      sessions.filters.date = "2024-06-15";
+      sessions.filters.dateFrom = "2024-06-01";
+      sessions.filters.dateTo = "2024-06-30";
+      sessions.filters.recentlyActive = true;
+      sessions.filters.hideUnknownProject = true;
+      sessions.filters.minMessages = 5;
+      sessions.filters.maxMessages = 100;
+      sessions.filters.minUserMessages = 3;
+      sessions.filters.includeOneShot = false;
+      sessions.filters.includeAutomated = true;
+
+      const params = sessions.filterParams;
+      sessions.initFromParams(params);
+
+      expect(sessions.filters.project).toBe("myproj");
+      expect(sessions.filters.agent).toBe("claude");
+      expect(sessions.filters.machine).toBe("host-a");
+      expect(sessions.filters.date).toBe("2024-06-15");
+      expect(sessions.filters.dateFrom).toBe("2024-06-01");
+      expect(sessions.filters.dateTo).toBe("2024-06-30");
+      expect(sessions.filters.recentlyActive).toBe(true);
+      expect(sessions.filters.hideUnknownProject).toBe(true);
+      expect(sessions.filters.minMessages).toBe(5);
+      expect(sessions.filters.maxMessages).toBe(100);
+      expect(sessions.filters.minUserMessages).toBe(3);
+      expect(sessions.filters.includeOneShot).toBe(false);
+      expect(sessions.filters.includeAutomated).toBe(true);
+    });
+  });
+
+  describe("filterParams", () => {
+    it("should return empty object for default filters", () => {
+      expect(sessions.filterParams).toEqual({});
+    });
+
+    it("should encode all non-default filters", () => {
+      sessions.filters.project = "myproj";
+      sessions.filters.agent = "claude";
+      sessions.filters.machine = "host-a";
+      sessions.filters.date = "2024-06-15";
+      sessions.filters.dateFrom = "2024-06-01";
+      sessions.filters.dateTo = "2024-06-30";
+      sessions.filters.recentlyActive = true;
+      sessions.filters.hideUnknownProject = true;
+      sessions.filters.minMessages = 5;
+      sessions.filters.maxMessages = 100;
+      sessions.filters.minUserMessages = 3;
+      sessions.filters.includeOneShot = false;
+      sessions.filters.includeAutomated = true;
+
+      expect(sessions.filterParams).toEqual({
+        project: "myproj",
+        agent: "claude",
+        machine: "host-a",
+        date: "2024-06-15",
+        date_from: "2024-06-01",
+        date_to: "2024-06-30",
+        active_since: "true",
+        exclude_project: "unknown",
+        min_messages: "5",
+        max_messages: "100",
+        min_user_messages: "3",
+        include_one_shot: "false",
+        include_automated: "true",
+      });
+    });
+
+    it("should omit default-valued filters", () => {
+      sessions.filters.project = "myproj";
+      // All other filters are defaults
+      const params = sessions.filterParams;
+      expect(params).toEqual({ project: "myproj" });
+      expect(params).not.toHaveProperty("agent");
+      expect(params).not.toHaveProperty("min_messages");
+      expect(params).not.toHaveProperty("include_one_shot");
+    });
   });
 
   describe("load serialization", () => {
