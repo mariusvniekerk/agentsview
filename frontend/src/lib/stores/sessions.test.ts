@@ -9,6 +9,7 @@ import {
   createSessionsStore,
   buildSessionGroups,
   parseFiltersFromParams,
+  filtersToParams,
 } from "./sessions.svelte.js";
 import type { Filters } from "./sessions.svelte.js";
 import type { Session } from "../api/types.js";
@@ -203,6 +204,75 @@ describe("SessionsStore", () => {
     it("should handle non-numeric min_messages", () => {
       const f = parseFiltersFromParams({ min_messages: "abc" });
       expect(f.minMessages).toBe(0);
+    });
+  });
+
+  describe("filtersToParams", () => {
+    it("should return empty params for default filters", () => {
+      const params = filtersToParams(parseFiltersFromParams({}));
+      expect(params).toEqual({});
+    });
+
+    it("should serialize all set filters", () => {
+      const f: Filters = {
+        project: "myproj",
+        machine: "host-a",
+        agent: "claude",
+        date: "2024-06-15",
+        dateFrom: "2024-06-01",
+        dateTo: "2024-06-30",
+        recentlyActive: true,
+        hideUnknownProject: true,
+        minMessages: 5,
+        maxMessages: 100,
+        minUserMessages: 3,
+        includeOneShot: false,
+        includeAutomated: true,
+      };
+      expect(filtersToParams(f)).toEqual({
+        project: "myproj",
+        machine: "host-a",
+        agent: "claude",
+        date: "2024-06-15",
+        date_from: "2024-06-01",
+        date_to: "2024-06-30",
+        active_since: "true",
+        exclude_project: "unknown",
+        min_messages: "5",
+        max_messages: "100",
+        min_user_messages: "3",
+        include_one_shot: "false",
+        include_automated: "true",
+      });
+    });
+
+    it("should round-trip through parseFiltersFromParams", () => {
+      const original: Filters = {
+        project: "myproj",
+        machine: "host-a",
+        agent: "claude",
+        date: "2024-06-15",
+        dateFrom: "2024-06-01",
+        dateTo: "2024-06-30",
+        recentlyActive: true,
+        hideUnknownProject: true,
+        minMessages: 5,
+        maxMessages: 100,
+        minUserMessages: 3,
+        includeOneShot: false,
+        includeAutomated: true,
+      };
+      const params = filtersToParams(original);
+      const parsed = parseFiltersFromParams(params);
+      expect(parsed).toEqual(original);
+    });
+
+    it("should round-trip default filters as empty", () => {
+      const defaults = parseFiltersFromParams({});
+      const params = filtersToParams(defaults);
+      const reparsed = parseFiltersFromParams(params);
+      expect(reparsed).toEqual(defaults);
+      expect(params).toEqual({});
     });
   });
 
