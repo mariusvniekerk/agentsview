@@ -6,6 +6,7 @@
     type TranscriptMode,
   } from "../../stores/ui.svelte.js";
   import { sessions } from "../../stores/sessions.svelte.js";
+  import { usage } from "../../stores/usage.svelte.js";
   import { sync } from "../../stores/sync.svelte.js";
   import { router } from "../../stores/router.svelte.js";
   import {
@@ -239,7 +240,7 @@
     <button
       class="nav-btn"
       class:active={router.route === "usage"}
-      onclick={() => router.navigate("usage")}
+      onclick={() => router.navigate("usage", usage.filterParams)}
       title="Token Usage"
       aria-label="Usage"
     >

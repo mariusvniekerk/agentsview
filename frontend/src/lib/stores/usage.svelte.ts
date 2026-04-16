@@ -139,6 +139,17 @@ class UsageStore {
     return p;
   }
 
+  /** Build URL query params from current filter state. */
+  get filterParams(): Record<string, string> {
+    const p: Record<string, string> = {};
+    if (this.from) p.from = this.from;
+    if (this.to) p.to = this.to;
+    if (this.excludedProjects) p.exclude_project = this.excludedProjects;
+    if (this.excludedAgents) p.exclude_agent = this.excludedAgents;
+    if (this.excludedModels) p.exclude_model = this.excludedModels;
+    return p;
+  }
+
   setDateRange(from: string, to: string) {
     this.from = from;
     this.to = to;
