@@ -6,7 +6,6 @@
     type TranscriptMode,
   } from "../../stores/ui.svelte.js";
   import { sessions } from "../../stores/sessions.svelte.js";
-  import { usage } from "../../stores/usage.svelte.js";
   import { sync } from "../../stores/sync.svelte.js";
   import { router } from "../../stores/router.svelte.js";
   import {
@@ -190,7 +189,7 @@
       class="hamburger"
       onclick={() => {
         if (ui.isMobileViewport && router.route !== "sessions") {
-          router.navigate("sessions", sessions.filterParams);
+          router.navigate("sessions");
           ui.sidebarOpen = true;
         } else {
           ui.toggleSidebar();
@@ -205,7 +204,7 @@
     </button>
     <button
       class="header-home"
-      onclick={() => router.navigate("sessions", sessions.filterParams)}
+      onclick={() => router.navigate("sessions")}
       title="Home"
     >
       <svg class="header-logo" width="18" height="18" viewBox="0 0 32 32" aria-hidden="true">
@@ -227,7 +226,7 @@
     <button
       class="nav-btn"
       class:active={router.route === "sessions"}
-      onclick={() => router.navigate("sessions", sessions.filterParams)}
+      onclick={() => router.navigate("sessions")}
       title="Sessions"
       aria-label="Sessions"
     >
@@ -240,7 +239,7 @@
     <button
       class="nav-btn"
       class:active={router.route === "usage"}
-      onclick={() => router.navigate("usage", usage.filterParams)}
+      onclick={() => router.navigate("usage")}
       title="Token Usage"
       aria-label="Usage"
     >

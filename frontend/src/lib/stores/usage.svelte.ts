@@ -86,7 +86,47 @@ function today(): string {
   return localDateStr(new Date());
 }
 
+const USAGE_FILTERS_KEY = "usage-filters";
+
+interface UsageFilterState {
+  excludedProjects: string;
+  excludedAgents: string;
+  excludedModels: string;
+}
+
+function loadUsageFilters(): UsageFilterState {
+  try {
+    const raw = localStorage.getItem(USAGE_FILTERS_KEY);
+    if (raw) {
+      const saved = JSON.parse(raw) as Partial<UsageFilterState>;
+      return {
+        excludedProjects: saved.excludedProjects ?? "",
+        excludedAgents: saved.excludedAgents ?? "",
+        excludedModels: saved.excludedModels ?? "",
+      };
+    }
+  } catch {
+    // Corrupted localStorage — fall back to defaults.
+  }
+  return { excludedProjects: "", excludedAgents: "", excludedModels: "" };
+}
+
+function saveUsageFilters(f: UsageFilterState): void {
+  try {
+    const data: UsageFilterState = {
+      excludedProjects: f.excludedProjects,
+      excludedAgents: f.excludedAgents,
+      excludedModels: f.excludedModels,
+    };
+    localStorage.setItem(USAGE_FILTERS_KEY, JSON.stringify(data));
+  } catch {
+    // localStorage full or unavailable — silently skip.
+  }
+}
+
 type Endpoint = "summary" | "topSessions";
+
+const _savedUsageFilters = loadUsageFilters();
 
 class UsageStore {
   from: string = $state(daysAgo(30));
@@ -97,9 +137,10 @@ class UsageStore {
   // as checked; clicking one unchecks it (excludes it).
   // Sent directly to the backend as exclude_project / exclude_agent
   // / exclude_model query params (NOT IN filtering).
-  excludedProjects: string = $state("");
-  excludedAgents: string = $state("");
-  excludedModels: string = $state("");
+  // Initialized from localStorage to survive tab switches.
+  excludedProjects: string = $state(_savedUsageFilters.excludedProjects);
+  excludedAgents: string = $state(_savedUsageFilters.excludedAgents);
+  excludedModels: string = $state(_savedUsageFilters.excludedModels);
 
   summary = $state<UsageSummaryResponse | null>(null);
   topSessions = $state<TopUsageSessionsResponse | null>(null);
@@ -136,17 +177,6 @@ class UsageStore {
     if (this.excludedModels) {
       p.exclude_model = this.excludedModels;
     }
-    return p;
-  }
-
-  /** Build URL query params from current filter state. */
-  get filterParams(): Record<string, string> {
-    const p: Record<string, string> = {};
-    if (this.from) p.from = this.from;
-    if (this.to) p.to = this.to;
-    if (this.excludedProjects) p.exclude_project = this.excludedProjects;
-    if (this.excludedAgents) p.exclude_agent = this.excludedAgents;
-    if (this.excludedModels) p.exclude_model = this.excludedModels;
     return p;
   }
 
@@ -275,6 +305,7 @@ class UsageStore {
   }
 
   async fetchAll() {
+    saveUsageFilters(this);
     await Promise.all([
       this.fetchSummary(),
       this.fetchTopSessions(),

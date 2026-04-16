@@ -67,49 +67,46 @@ async function loadStore() {
   return import("./usage.svelte.js");
 }
 
-describe("UsageStore filterParams", () => {
+describe("UsageStore filter persistence", () => {
   beforeEach(() => {
     installStorage();
     localStorage.removeItem(TOGGLES_KEY);
+    localStorage.removeItem("usage-filters");
     vi.clearAllMocks();
   });
 
-  it("includes from and to dates", async () => {
+  it("saves exclude filters to localStorage on fetchAll", async () => {
     const { usage } = await loadStore();
-    usage.from = "2024-06-01";
-    usage.to = "2024-06-30";
-    usage.excludedProjects = "";
-    usage.excludedAgents = "";
-    usage.excludedModels = "";
-
-    expect(usage.filterParams).toEqual({
-      from: "2024-06-01",
-      to: "2024-06-30",
-    });
-  });
-
-  it("includes exclude params when set", async () => {
-    const { usage } = await loadStore();
-    usage.excludedProjects = "proj-a,proj-b";
+    usage.excludedProjects = "proj-a";
     usage.excludedAgents = "claude";
-    usage.excludedModels = "opus";
+    await usage.fetchAll();
 
-    const params = usage.filterParams;
-    expect(params.exclude_project).toBe("proj-a,proj-b");
-    expect(params.exclude_agent).toBe("claude");
-    expect(params.exclude_model).toBe("opus");
+    const saved = JSON.parse(
+      localStorage.getItem("usage-filters") ?? "{}",
+    );
+    expect(saved.excludedProjects).toBe("proj-a");
+    expect(saved.excludedAgents).toBe("claude");
   });
 
-  it("omits empty exclude params", async () => {
+  it("restores exclude filters from localStorage on load", async () => {
+    localStorage.setItem(
+      "usage-filters",
+      JSON.stringify({
+        excludedProjects: "saved-proj",
+        excludedModels: "opus",
+      }),
+    );
     const { usage } = await loadStore();
-    usage.excludedProjects = "";
-    usage.excludedAgents = "";
-    usage.excludedModels = "";
+    expect(usage.excludedProjects).toBe("saved-proj");
+    expect(usage.excludedModels).toBe("opus");
+    expect(usage.excludedAgents).toBe("");
+  });
 
-    const params = usage.filterParams;
-    expect(params).not.toHaveProperty("exclude_project");
-    expect(params).not.toHaveProperty("exclude_agent");
-    expect(params).not.toHaveProperty("exclude_model");
+  it("falls back to defaults on corrupted localStorage", async () => {
+    localStorage.setItem("usage-filters", "not json");
+    const { usage } = await loadStore();
+    expect(usage.excludedProjects).toBe("");
+    expect(usage.excludedAgents).toBe("");
   });
 });
 

@@ -97,10 +97,8 @@
         usage.to = params["to"];
         changed = true;
       }
-      // Exclude params: missing means "nothing excluded". The URL
-      // is authoritative — tab navigation carries current filter
-      // params via usage.filterParams, so missing params correctly
-      // indicate the user has no exclusions.
+      // Exclude params: missing means "nothing excluded", so we
+      // MUST update to "" when the param disappears.
       const newExProj = params["exclude_project"] ?? "";
       if (newExProj !== usage.excludedProjects) {
         usage.excludedProjects = newExProj;

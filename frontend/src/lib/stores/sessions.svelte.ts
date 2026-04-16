@@ -52,6 +52,29 @@ function defaultFilters(): Filters {
   };
 }
 
+const SESSION_FILTERS_KEY = "session-filters";
+
+function loadSavedFilters(): Filters {
+  try {
+    const raw = localStorage.getItem(SESSION_FILTERS_KEY);
+    if (raw) {
+      const saved = JSON.parse(raw) as Partial<Filters>;
+      return { ...defaultFilters(), ...saved };
+    }
+  } catch {
+    // Corrupted localStorage — fall back to defaults.
+  }
+  return defaultFilters();
+}
+
+function saveFilters(f: Filters): void {
+  try {
+    localStorage.setItem(SESSION_FILTERS_KEY, JSON.stringify(f));
+  } catch {
+    // localStorage full or unavailable — silently skip.
+  }
+}
+
 class SessionsStore {
   sessions: Session[] = $state([]);
   projects: ProjectInfo[] = $state([]);
@@ -62,7 +85,7 @@ class SessionsStore {
   nextCursor: string | null = $state(null);
   total: number = $state(0);
   loading: boolean = $state(false);
-  filters: Filters = $state(defaultFilters());
+  filters: Filters = $state(loadSavedFilters());
 
   private loadVersion: number = 0;
   private projectsLoaded: boolean = false;
@@ -179,6 +202,7 @@ class SessionsStore {
   }
 
   async load() {
+    saveFilters(this.filters);
     const version = ++this.loadVersion;
     this.loading = true;
     // Preserve old data during reload — clearing eagerly
@@ -562,26 +586,6 @@ class SessionsStore {
     this.setActiveSession(null);
     this.invalidateFilterCaches();
     this.load();
-  }
-
-  /** Build URL query params from current filter state. */
-  get filterParams(): Record<string, string> {
-    const f = this.filters;
-    const p: Record<string, string> = {};
-    if (f.project) p.project = f.project;
-    if (f.machine) p.machine = f.machine;
-    if (f.agent) p.agent = f.agent;
-    if (f.date) p.date = f.date;
-    if (f.dateFrom) p.date_from = f.dateFrom;
-    if (f.dateTo) p.date_to = f.dateTo;
-    if (f.recentlyActive) p.active_since = "true";
-    if (f.hideUnknownProject) p.exclude_project = "unknown";
-    if (f.minMessages > 0) p.min_messages = String(f.minMessages);
-    if (f.maxMessages > 0) p.max_messages = String(f.maxMessages);
-    if (f.minUserMessages > 0) p.min_user_messages = String(f.minUserMessages);
-    if (!f.includeOneShot) p.include_one_shot = "false";
-    if (f.includeAutomated) p.include_automated = "true";
-    return p;
   }
 
   get hasActiveFilters(): boolean {

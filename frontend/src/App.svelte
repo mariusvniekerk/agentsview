@@ -204,12 +204,10 @@
     messageListRef?.scrollToOrdinal(next.ordinals[0]!);
   }
 
-  // React to route changes: initialize session filters from URL params.
-  // Only track route and params — NOT sessionId. When the URL sync
-  // effect deselects a session (changing sessionId), we must not
-  // re-run initFromParams or it will reset filters the user just set.
-  // Only reinitialize filters when the route is "sessions" — switching
-  // to other tabs (usage, insights, etc.) should preserve session filters.
+  // React to route changes: reload sessions and apply URL params.
+  // Only apply URL params (initFromParams) on the sessions route —
+  // switching to other tabs preserves filter state in localStorage.
+  // Only track route and params — NOT sessionId.
   $effect(() => {
     const route = router.route;
     const params = router.params;
@@ -266,6 +264,26 @@
     });
   });
 
+  // Build URL params from current session filters.
+  function buildFilterParams(): Record<string, string> {
+    const f = sessions.filters;
+    const p: Record<string, string> = {};
+    if (f.project) p.project = f.project;
+    if (f.machine) p.machine = f.machine;
+    if (f.agent) p.agent = f.agent;
+    if (f.date) p.date = f.date;
+    if (f.dateFrom) p.date_from = f.dateFrom;
+    if (f.dateTo) p.date_to = f.dateTo;
+    if (f.recentlyActive) p.active_since = "true";
+    if (f.hideUnknownProject) p.exclude_project = "unknown";
+    if (f.minMessages > 0) p.min_messages = String(f.minMessages);
+    if (f.maxMessages > 0) p.max_messages = String(f.maxMessages);
+    if (f.minUserMessages > 0) p.min_user_messages = String(f.minUserMessages);
+    if (!f.includeOneShot) p.include_one_shot = "false";
+    if (f.includeAutomated) p.include_automated = "true";
+    return p;
+  }
+
   // Sync active session to URL.
   $effect(() => {
     const activeId = sessions.activeSessionId;
@@ -276,7 +294,7 @@
       if (activeId) {
         router.navigateToSession(activeId);
       } else {
-        router.navigateFromSession(sessions.filterParams);
+        router.navigateFromSession(buildFilterParams());
       }
     });
   });

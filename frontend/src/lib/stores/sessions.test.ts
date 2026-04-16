@@ -13,6 +13,19 @@ import type { Session } from "../api/types.js";
 import * as api from "../api/client.js";
 import type { ListSessionsParams } from "../api/client.js";
 
+// Install a minimal localStorage mock for the test environment.
+const storageData = new Map<string, string>();
+Object.defineProperty(globalThis, "localStorage", {
+  value: {
+    getItem: (key: string) => storageData.get(key) ?? null,
+    setItem: (key: string, value: string) => { storageData.set(key, value); },
+    removeItem: (key: string) => { storageData.delete(key); },
+    clear: () => { storageData.clear(); },
+  },
+  configurable: true,
+  writable: true,
+});
+
 vi.mock("../api/client.js", () => ({
   listSessions: vi.fn(),
   getSession: vi.fn(),
@@ -49,6 +62,7 @@ describe("SessionsStore", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    storageData.clear();
     mockListSessions();
     sessions = createSessionsStore();
   });
@@ -98,135 +112,39 @@ describe("SessionsStore", () => {
       expect(sessions.filters.minMessages).toBe(0);
       expect(sessions.filters.maxMessages).toBe(0);
     });
-
-    it("should reset existing filters when called with empty params", () => {
-      // Set non-default filters first
-      sessions.filters.project = "myproj";
-      sessions.filters.agent = "claude";
-      sessions.filters.date = "2024-06-15";
-      sessions.filters.dateFrom = "2024-06-01";
-      sessions.filters.dateTo = "2024-06-30";
-      sessions.filters.machine = "host-a";
-      sessions.filters.minMessages = 5;
-      sessions.filters.maxMessages = 100;
-      sessions.filters.recentlyActive = true;
-      sessions.filters.hideUnknownProject = true;
-
-      // Calling initFromParams with empty params resets everything.
-      // This is why the caller (App.svelte) must guard this call to
-      // only run on the sessions route — otherwise switching tabs
-      // would clear filters.
-      sessions.initFromParams({});
-
-      expect(sessions.filters.project).toBe("");
-      expect(sessions.filters.agent).toBe("");
-      expect(sessions.filters.date).toBe("");
-      expect(sessions.filters.dateFrom).toBe("");
-      expect(sessions.filters.dateTo).toBe("");
-      expect(sessions.filters.machine).toBe("");
-      expect(sessions.filters.minMessages).toBe(0);
-      expect(sessions.filters.maxMessages).toBe(0);
-      expect(sessions.filters.recentlyActive).toBe(false);
-      expect(sessions.filters.hideUnknownProject).toBe(false);
-    });
-
-    it("should preserve only URL-present params when reinitializing", () => {
-      // Simulate: user has project+agent filters, then navigates
-      // back to /sessions?project=myproj (agent not in URL).
-      sessions.filters.project = "myproj";
-      sessions.filters.agent = "claude";
-      sessions.filters.minMessages = 5;
-
-      sessions.initFromParams({ project: "myproj" });
-
-      expect(sessions.filters.project).toBe("myproj");
-      expect(sessions.filters.agent).toBe("");
-      expect(sessions.filters.minMessages).toBe(0);
-    });
-
-    it("should round-trip through filterParams without loss", () => {
-      // Simulates the tab-switch flow: user sets filters, navigates
-      // away, then navigates back to /sessions with filterParams in
-      // the URL. initFromParams(filterParams) must restore the same
-      // filter state.
-      sessions.filters.project = "myproj";
-      sessions.filters.agent = "claude";
-      sessions.filters.machine = "host-a";
-      sessions.filters.date = "2024-06-15";
-      sessions.filters.dateFrom = "2024-06-01";
-      sessions.filters.dateTo = "2024-06-30";
-      sessions.filters.recentlyActive = true;
-      sessions.filters.hideUnknownProject = true;
-      sessions.filters.minMessages = 5;
-      sessions.filters.maxMessages = 100;
-      sessions.filters.minUserMessages = 3;
-      sessions.filters.includeOneShot = false;
-      sessions.filters.includeAutomated = true;
-
-      const params = sessions.filterParams;
-      sessions.initFromParams(params);
-
-      expect(sessions.filters.project).toBe("myproj");
-      expect(sessions.filters.agent).toBe("claude");
-      expect(sessions.filters.machine).toBe("host-a");
-      expect(sessions.filters.date).toBe("2024-06-15");
-      expect(sessions.filters.dateFrom).toBe("2024-06-01");
-      expect(sessions.filters.dateTo).toBe("2024-06-30");
-      expect(sessions.filters.recentlyActive).toBe(true);
-      expect(sessions.filters.hideUnknownProject).toBe(true);
-      expect(sessions.filters.minMessages).toBe(5);
-      expect(sessions.filters.maxMessages).toBe(100);
-      expect(sessions.filters.minUserMessages).toBe(3);
-      expect(sessions.filters.includeOneShot).toBe(false);
-      expect(sessions.filters.includeAutomated).toBe(true);
-    });
   });
 
-  describe("filterParams", () => {
-    it("should return empty object for default filters", () => {
-      expect(sessions.filterParams).toEqual({});
-    });
-
-    it("should encode all non-default filters", () => {
+  describe("localStorage persistence", () => {
+    it("should save filters to localStorage on load", async () => {
       sessions.filters.project = "myproj";
       sessions.filters.agent = "claude";
-      sessions.filters.machine = "host-a";
-      sessions.filters.date = "2024-06-15";
-      sessions.filters.dateFrom = "2024-06-01";
-      sessions.filters.dateTo = "2024-06-30";
-      sessions.filters.recentlyActive = true;
-      sessions.filters.hideUnknownProject = true;
-      sessions.filters.minMessages = 5;
-      sessions.filters.maxMessages = 100;
-      sessions.filters.minUserMessages = 3;
-      sessions.filters.includeOneShot = false;
-      sessions.filters.includeAutomated = true;
+      await sessions.load();
 
-      expect(sessions.filterParams).toEqual({
-        project: "myproj",
-        agent: "claude",
-        machine: "host-a",
-        date: "2024-06-15",
-        date_from: "2024-06-01",
-        date_to: "2024-06-30",
-        active_since: "true",
-        exclude_project: "unknown",
-        min_messages: "5",
-        max_messages: "100",
-        min_user_messages: "3",
-        include_one_shot: "false",
-        include_automated: "true",
-      });
+      const saved = JSON.parse(
+        localStorage.getItem("session-filters") ?? "{}",
+      );
+      expect(saved.project).toBe("myproj");
+      expect(saved.agent).toBe("claude");
     });
 
-    it("should omit default-valued filters", () => {
-      sessions.filters.project = "myproj";
-      // All other filters are defaults
-      const params = sessions.filterParams;
-      expect(params).toEqual({ project: "myproj" });
-      expect(params).not.toHaveProperty("agent");
-      expect(params).not.toHaveProperty("min_messages");
-      expect(params).not.toHaveProperty("include_one_shot");
+    it("should restore filters from localStorage on create", async () => {
+      localStorage.setItem(
+        "session-filters",
+        JSON.stringify({ project: "saved-proj", agent: "codex" }),
+      );
+      const store = createSessionsStore();
+      expect(store.filters.project).toBe("saved-proj");
+      expect(store.filters.agent).toBe("codex");
+      // Defaults for fields not in localStorage
+      expect(store.filters.minMessages).toBe(0);
+      expect(store.filters.includeOneShot).toBe(true);
+    });
+
+    it("should fall back to defaults on corrupted localStorage", () => {
+      localStorage.setItem("session-filters", "not json");
+      const store = createSessionsStore();
+      expect(store.filters.project).toBe("");
+      expect(store.filters.includeOneShot).toBe(true);
     });
   });
 
