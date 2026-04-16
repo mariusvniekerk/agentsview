@@ -18,7 +18,7 @@ export interface SessionGroup {
   endedAt: string | null;
 }
 
-interface Filters {
+export interface Filters {
   project: string;
   machine: string;
   agent: string;
@@ -73,6 +73,42 @@ function saveFilters(f: Filters): void {
   } catch {
     // localStorage full or unavailable — silently skip.
   }
+}
+
+/** Parse URL query params into a typed Filters object.
+ *  Unknown/missing params fall back to defaults. */
+export function parseFiltersFromParams(
+  params: Record<string, string>,
+): Filters {
+  const minMsgs = parseInt(params["min_messages"] ?? "", 10);
+  const maxMsgs = parseInt(params["max_messages"] ?? "", 10);
+  const minUserMsgs = parseInt(params["min_user_messages"] ?? "", 10);
+
+  const hideUnknown = params["exclude_project"] === "unknown";
+  let project = params["project"] ?? "";
+  if (hideUnknown && project === "unknown") {
+    project = "";
+  }
+
+  const oneShotParam = params["include_one_shot"];
+  const includeOneShot =
+    oneShotParam === undefined ? true : oneShotParam === "true";
+
+  return {
+    project,
+    machine: params["machine"] ?? "",
+    agent: params["agent"] ?? "",
+    date: params["date"] ?? "",
+    dateFrom: params["date_from"] ?? "",
+    dateTo: params["date_to"] ?? "",
+    recentlyActive: params["active_since"] === "true",
+    hideUnknownProject: hideUnknown,
+    minMessages: Number.isFinite(minMsgs) ? minMsgs : 0,
+    maxMessages: Number.isFinite(maxMsgs) ? maxMsgs : 0,
+    minUserMessages: Number.isFinite(minUserMsgs) ? minUserMsgs : 0,
+    includeOneShot,
+    includeAutomated: params["include_automated"] === "true",
+  };
 }
 
 class SessionsStore {
@@ -147,55 +183,12 @@ class SessionsStore {
   }
 
   initFromParams(params: Record<string, string>) {
-    const minMsgs = parseInt(
-      params["min_messages"] ?? "",
-      10,
-    );
-    const maxMsgs = parseInt(
-      params["max_messages"] ?? "",
-      10,
-    );
-    const minUserMsgs = parseInt(
-      params["min_user_messages"] ?? "",
-      10,
-    );
-
-    const hideUnknown =
-      params["exclude_project"] === "unknown";
-    let project = params["project"] ?? "";
-    if (hideUnknown && project === "unknown") {
-      project = "";
-    }
-
     const prevOneShot = this.filters.includeOneShot;
     const prevAutomated = this.filters.includeAutomated;
-    // Default is true (show single-turn); only false when
-    // explicitly set to "false" in URL params.
-    const oneShotParam = params["include_one_shot"];
-    const nextOneShot =
-      oneShotParam === undefined ? true : oneShotParam === "true";
-    const nextAutomated =
-      params["include_automated"] === "true";
-
-    this.filters = {
-      project,
-      machine: params["machine"] ?? "",
-      agent: params["agent"] ?? "",
-      date: params["date"] ?? "",
-      dateFrom: params["date_from"] ?? "",
-      dateTo: params["date_to"] ?? "",
-      recentlyActive: params["active_since"] === "true",
-      hideUnknownProject: hideUnknown,
-      minMessages: Number.isFinite(minMsgs) ? minMsgs : 0,
-      maxMessages: Number.isFinite(maxMsgs) ? maxMsgs : 0,
-      minUserMessages: Number.isFinite(minUserMsgs)
-        ? minUserMsgs
-        : 0,
-      includeOneShot: nextOneShot,
-      includeAutomated: nextAutomated,
-    };
-    if (prevOneShot !== nextOneShot ||
-        prevAutomated !== nextAutomated) {
+    const next = parseFiltersFromParams(params);
+    this.filters = next;
+    if (prevOneShot !== next.includeOneShot ||
+        prevAutomated !== next.includeAutomated) {
       this.invalidateFilterCaches();
     }
     this.setActiveSession(null);

@@ -88,7 +88,7 @@ function today(): string {
 
 const USAGE_FILTERS_KEY = "usage-filters";
 
-interface UsageFilterState {
+export interface UsageFilterState {
   excludedProjects: string;
   excludedAgents: string;
   excludedModels: string;

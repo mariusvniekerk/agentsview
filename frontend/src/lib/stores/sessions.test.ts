@@ -8,7 +8,9 @@ import {
 import {
   createSessionsStore,
   buildSessionGroups,
+  parseFiltersFromParams,
 } from "./sessions.svelte.js";
+import type { Filters } from "./sessions.svelte.js";
 import type { Session } from "../api/types.js";
 import * as api from "../api/client.js";
 import type { ListSessionsParams } from "../api/client.js";
@@ -145,6 +147,62 @@ describe("SessionsStore", () => {
       const store = createSessionsStore();
       expect(store.filters.project).toBe("");
       expect(store.filters.includeOneShot).toBe(true);
+    });
+  });
+
+  describe("parseFiltersFromParams", () => {
+    it("should parse all known URL params", () => {
+      const f = parseFiltersFromParams({
+        project: "myproj",
+        machine: "host-a",
+        agent: "claude",
+        date: "2024-06-15",
+        date_from: "2024-06-01",
+        date_to: "2024-06-30",
+        active_since: "true",
+        exclude_project: "unknown",
+        min_messages: "5",
+        max_messages: "100",
+        min_user_messages: "3",
+        include_one_shot: "false",
+        include_automated: "true",
+      });
+      expect(f.project).toBe("myproj");
+      expect(f.machine).toBe("host-a");
+      expect(f.agent).toBe("claude");
+      expect(f.date).toBe("2024-06-15");
+      expect(f.dateFrom).toBe("2024-06-01");
+      expect(f.dateTo).toBe("2024-06-30");
+      expect(f.recentlyActive).toBe(true);
+      expect(f.hideUnknownProject).toBe(true);
+      expect(f.minMessages).toBe(5);
+      expect(f.maxMessages).toBe(100);
+      expect(f.minUserMessages).toBe(3);
+      expect(f.includeOneShot).toBe(false);
+      expect(f.includeAutomated).toBe(true);
+    });
+
+    it("should return defaults for empty params", () => {
+      const f = parseFiltersFromParams({});
+      expect(f.project).toBe("");
+      expect(f.agent).toBe("");
+      expect(f.minMessages).toBe(0);
+      expect(f.includeOneShot).toBe(true);
+      expect(f.includeAutomated).toBe(false);
+    });
+
+    it("should clear project=unknown when exclude_project=unknown", () => {
+      const f = parseFiltersFromParams({
+        project: "unknown",
+        exclude_project: "unknown",
+      });
+      expect(f.project).toBe("");
+      expect(f.hideUnknownProject).toBe(true);
+    });
+
+    it("should handle non-numeric min_messages", () => {
+      const f = parseFiltersFromParams({ min_messages: "abc" });
+      expect(f.minMessages).toBe(0);
     });
   });
 
