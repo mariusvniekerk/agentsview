@@ -204,16 +204,27 @@
     messageListRef?.scrollToOrdinal(next.ordinals[0]!);
   }
 
+  /** True when URL params contain session filter keys (deep-link). */
+  const SESSION_FILTER_KEYS = new Set([
+    "project", "machine", "agent", "date", "date_from", "date_to",
+    "active_since", "exclude_project", "min_messages", "max_messages",
+    "min_user_messages", "include_one_shot", "include_automated",
+  ]);
+  function hasFilterParams(params: Record<string, string>): boolean {
+    return Object.keys(params).some((k) => SESSION_FILTER_KEYS.has(k));
+  }
+
   // React to route changes: reload sessions and apply URL params.
-  // Only apply URL params (initFromParams) on the sessions route —
-  // switching to other tabs preserves filter state in localStorage.
+  // Only apply URL deep-link params (initFromParams) when the URL
+  // actually contains filter keys — a bare /sessions preserves the
+  // current store state (restored from localStorage).
   // Only track route and params — NOT sessionId.
   $effect(() => {
     const route = router.route;
     const params = router.params;
     untrack(() => {
       const sid = router.sessionId;
-      if (!sid && route === "sessions") {
+      if (!sid && route === "sessions" && hasFilterParams(params)) {
         sessions.initFromParams(params);
       }
       sessions.load();

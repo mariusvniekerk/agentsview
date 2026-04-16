@@ -75,20 +75,23 @@
   );
 
   // URL-init: seed store filters from URL params when landing
-  // on /usage or when the URL changes via back/forward nav.
-  // Uses explicit empty fallbacks so filters CLEAR when params
-  // disappear (e.g., navigating back from /usage?exclude_project=foo
-  // to /usage). On initial mount, onMount() calls fetchAll after
-  // this effect runs, so we skip the refetch on the first run.
+  // on /usage with a deep-link. A bare /usage preserves the
+  // current store state (restored from localStorage). Only
+  // apply params that are actually present in the URL.
+  const USAGE_FILTER_KEYS = new Set([
+    "from", "to", "exclude_project", "exclude_agent", "exclude_model",
+  ]);
   let urlInitRan = false;
   $effect(() => {
     const route = router.route;
     const params = router.params;
     untrack(() => {
       if (route !== "usage") return;
+      const hasFilterKeys = Object.keys(params).some(
+        (k) => USAGE_FILTER_KEYS.has(k),
+      );
+      if (!hasFilterKeys) { urlInitRan = true; return; }
       let changed = false;
-      // from/to: use defaults when missing (don't stomp the store
-      // with "" which would break date inputs).
       if (params["from"] && params["from"] !== usage.from) {
         usage.from = params["from"];
         changed = true;
@@ -97,8 +100,6 @@
         usage.to = params["to"];
         changed = true;
       }
-      // Exclude params: missing means "nothing excluded", so we
-      // MUST update to "" when the param disappears.
       const newExProj = params["exclude_project"] ?? "";
       if (newExProj !== usage.excludedProjects) {
         usage.excludedProjects = newExProj;

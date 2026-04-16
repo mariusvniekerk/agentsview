@@ -126,8 +126,6 @@ function saveUsageFilters(f: UsageFilterState): void {
 
 type Endpoint = "summary" | "topSessions";
 
-const _savedUsageFilters = loadUsageFilters();
-
 class UsageStore {
   from: string = $state(daysAgo(30));
   to: string = $state(today());
@@ -138,9 +136,16 @@ class UsageStore {
   // Sent directly to the backend as exclude_project / exclude_agent
   // / exclude_model query params (NOT IN filtering).
   // Initialized from localStorage to survive tab switches.
-  excludedProjects: string = $state(_savedUsageFilters.excludedProjects);
-  excludedAgents: string = $state(_savedUsageFilters.excludedAgents);
-  excludedModels: string = $state(_savedUsageFilters.excludedModels);
+  excludedProjects: string = $state("");
+  excludedAgents: string = $state("");
+  excludedModels: string = $state("");
+
+  constructor() {
+    const saved = loadUsageFilters();
+    this.excludedProjects = saved.excludedProjects;
+    this.excludedAgents = saved.excludedAgents;
+    this.excludedModels = saved.excludedModels;
+  }
 
   summary = $state<UsageSummaryResponse | null>(null);
   topSessions = $state<TopUsageSessionsResponse | null>(null);
