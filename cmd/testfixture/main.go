@@ -103,8 +103,6 @@ func main() {
 	fmt.Printf("Fixture DB written to %s\n", *out)
 }
 
-func ptr[T any](v T) *T { return &v }
-
 func createSessionFixture(
 	database *db.DB, spec sessionSpec,
 	index int, base time.Time,
@@ -122,17 +120,17 @@ func createSessionFixture(
 		Project:          spec.project,
 		Machine:          "test-machine",
 		Agent:            "claude",
-		StartedAt:        ptr(startedAt.Format(time.RFC3339Nano)),
-		EndedAt:          ptr(endedAt.Format(time.RFC3339Nano)),
+		StartedAt:        new(startedAt.Format(time.RFC3339Nano)),
+		EndedAt:          new(endedAt.Format(time.RFC3339Nano)),
 		MessageCount:     spec.msgCount,
 		UserMessageCount: spec.userMsgCount,
 		RelationshipType: spec.relationshipType,
 	}
 	if spec.parentSessionID != "" {
-		sess.ParentSessionID = ptr(spec.parentSessionID)
+		sess.ParentSessionID = new(spec.parentSessionID)
 	}
 	if spec.msgCount > 0 {
-		sess.FirstMessage = ptr(
+		sess.FirstMessage = new(
 			fmt.Sprintf("First message for %s", spec.project),
 		)
 	}

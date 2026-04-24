@@ -96,10 +96,10 @@ func insertSessionFixture(t *testing.T, d *DB, f sessionFixture) {
 		s.UserMessageCount = f.userMsgs
 		s.MessageCount = mc
 		if f.startedAt != "" {
-			s.StartedAt = Ptr(f.startedAt)
+			s.StartedAt = new(f.startedAt)
 		}
 		if endedAt != "" {
-			s.EndedAt = Ptr(endedAt)
+			s.EndedAt = new(endedAt)
 		}
 		s.PeakContextTokens = f.peakContext
 		s.HasPeakContextTokens = f.hasPeakContext
@@ -2128,7 +2128,7 @@ func TestGetSessionStats_Outcomes_Happy(t *testing.T) {
 	})
 	updateSignals(t, d, "s-a", SessionSignalUpdate{
 		Outcome:         "completed",
-		HealthGrade:     Ptr("A"),
+		HealthGrade:     new("A"),
 		ToolRetryCount:  1,
 		CompactionCount: 3,
 		EditChurnCount:  5,
@@ -2141,7 +2141,7 @@ func TestGetSessionStats_Outcomes_Happy(t *testing.T) {
 	})
 	updateSignals(t, d, "s-b", SessionSignalUpdate{
 		Outcome:         "completed",
-		HealthGrade:     Ptr("B"),
+		HealthGrade:     new("B"),
 		ToolRetryCount:  0,
 		CompactionCount: 1,
 		EditChurnCount:  0,
@@ -2154,7 +2154,7 @@ func TestGetSessionStats_Outcomes_Happy(t *testing.T) {
 	})
 	updateSignals(t, d, "s-c", SessionSignalUpdate{
 		Outcome:         "abandoned",
-		HealthGrade:     Ptr("C"),
+		HealthGrade:     new("C"),
 		ToolRetryCount:  3,
 		CompactionCount: 0,
 		EditChurnCount:  4,
@@ -2167,7 +2167,7 @@ func TestGetSessionStats_Outcomes_Happy(t *testing.T) {
 	})
 	updateSignals(t, d, "s-d", SessionSignalUpdate{
 		Outcome:         "errored",
-		HealthGrade:     Ptr("D"),
+		HealthGrade:     new("D"),
 		ToolRetryCount:  2,
 		CompactionCount: 2,
 		EditChurnCount:  6,
@@ -2258,7 +2258,7 @@ func TestGetSessionStats_Outcomes_NoClaude(t *testing.T) {
 	})
 	updateSignals(t, d, "cx1", SessionSignalUpdate{
 		Outcome:        "completed",
-		HealthGrade:    Ptr("A"),
+		HealthGrade:    new("A"),
 		ToolRetryCount: 5,
 	})
 

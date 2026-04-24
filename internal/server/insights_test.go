@@ -77,8 +77,8 @@ func TestListInsights(t *testing.T) {
 		{
 			name: "WithData",
 			seed: func(t *testing.T, te *testEnv) {
-				te.seedInsight(t, "daily_activity", "2025-01-15", strPtr("my-app"))
-				te.seedInsight(t, "daily_activity", "2025-01-15", strPtr("other-app"))
+				te.seedInsight(t, "daily_activity", "2025-01-15", new("my-app"))
+				te.seedInsight(t, "daily_activity", "2025-01-15", new("other-app"))
 				te.seedInsight(t, "agent_analysis", "2025-01-15", nil)
 			},
 			path:       "/api/v1/insights",
@@ -88,7 +88,7 @@ func TestListInsights(t *testing.T) {
 		{
 			name: "TypeFilter",
 			seed: func(t *testing.T, te *testEnv) {
-				te.seedInsight(t, "daily_activity", "2025-01-15", strPtr("my-app"))
+				te.seedInsight(t, "daily_activity", "2025-01-15", new("my-app"))
 				te.seedInsight(t, "agent_analysis", "2025-01-15", nil)
 			},
 			path:       "/api/v1/insights?type=daily_activity",
@@ -98,8 +98,8 @@ func TestListInsights(t *testing.T) {
 		{
 			name: "ReturnsAll",
 			seed: func(t *testing.T, te *testEnv) {
-				te.seedInsight(t, "daily_activity", "2025-01-15", strPtr("my-app"))
-				te.seedInsight(t, "daily_activity", "2025-01-16", strPtr("my-app"))
+				te.seedInsight(t, "daily_activity", "2025-01-15", new("my-app"))
+				te.seedInsight(t, "daily_activity", "2025-01-16", new("my-app"))
 			},
 			path:       "/api/v1/insights",
 			wantStatus: http.StatusOK,
@@ -140,7 +140,7 @@ func TestGetInsight_Found(t *testing.T) {
 	te := setup(t)
 
 	id := te.seedInsight(t, "daily_activity", "2025-01-15",
-		strPtr("my-app"))
+		new("my-app"))
 
 	w := te.get(t, fmt.Sprintf("/api/v1/insights/%d", id))
 	assertStatus(t, w, http.StatusOK)
@@ -870,7 +870,7 @@ func TestDeleteInsight_Found(t *testing.T) {
 	te := setup(t)
 
 	id := te.seedInsight(t, "daily_activity", "2025-01-15",
-		strPtr("my-app"))
+		new("my-app"))
 
 	w := te.del(t, fmt.Sprintf("/api/v1/insights/%d", id))
 	assertStatus(t, w, http.StatusNoContent)
@@ -908,8 +908,6 @@ func TestInsight_ResourceErrors(t *testing.T) {
 }
 
 // --- helpers ---
-
-func strPtr(s string) *string { return &s }
 
 func (te *testEnv) seedInsight(
 	t *testing.T,

@@ -4,10 +4,6 @@ import (
 	"testing"
 )
 
-func floatPtr(f float64) *float64 { return &f }
-
-func intPtr(i int) *int { return &i }
-
 func TestComputeHealthScore(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -24,7 +20,7 @@ func TestComputeHealthScore(t *testing.T) {
 				OutcomeConfidence: "high",
 				HasToolCalls:      true,
 			},
-			wantScore:     intPtr(100),
+			wantScore:     new(100),
 			wantGrade:     "A",
 			wantBasis:     []string{"outcome", "tool_health"},
 			wantPenalties: nil,
@@ -36,7 +32,7 @@ func TestComputeHealthScore(t *testing.T) {
 				OutcomeConfidence: "medium",
 				HasToolCalls:      true,
 			},
-			wantScore: intPtr(70),
+			wantScore: new(70),
 			wantGrade: "C",
 			wantBasis: []string{"outcome", "tool_health"},
 			wantPenalties: map[string]int{
@@ -50,7 +46,7 @@ func TestComputeHealthScore(t *testing.T) {
 				OutcomeConfidence: "high",
 				HasToolCalls:      true,
 			},
-			wantScore: intPtr(85),
+			wantScore: new(85),
 			wantGrade: "B",
 			wantBasis: []string{"outcome", "tool_health"},
 			wantPenalties: map[string]int{
@@ -65,7 +61,7 @@ func TestComputeHealthScore(t *testing.T) {
 				HasToolCalls:       true,
 				FailureSignalCount: 20,
 			},
-			wantScore: intPtr(70),
+			wantScore: new(70),
 			wantGrade: "C",
 			wantBasis: []string{"outcome", "tool_health"},
 			wantPenalties: map[string]int{
@@ -80,7 +76,7 @@ func TestComputeHealthScore(t *testing.T) {
 				HasToolCalls:      true,
 				RetryCount:        3,
 			},
-			wantScore: intPtr(85),
+			wantScore: new(85),
 			wantGrade: "B",
 			wantBasis: []string{"outcome", "tool_health"},
 			wantPenalties: map[string]int{
@@ -95,7 +91,7 @@ func TestComputeHealthScore(t *testing.T) {
 				HasToolCalls:      true,
 				EditChurnCount:    2,
 			},
-			wantScore: intPtr(92),
+			wantScore: new(92),
 			wantGrade: "A",
 			wantBasis: []string{"outcome", "tool_health"},
 			wantPenalties: map[string]int{
@@ -110,7 +106,7 @@ func TestComputeHealthScore(t *testing.T) {
 				HasToolCalls:       true,
 				ConsecutiveFailMax: 3,
 			},
-			wantScore: intPtr(90),
+			wantScore: new(90),
 			wantGrade: "A",
 			wantBasis: []string{"outcome", "tool_health"},
 			wantPenalties: map[string]int{
@@ -125,7 +121,7 @@ func TestComputeHealthScore(t *testing.T) {
 				HasToolCalls:       true,
 				ConsecutiveFailMax: 2,
 			},
-			wantScore:     intPtr(100),
+			wantScore:     new(100),
 			wantGrade:     "A",
 			wantBasis:     []string{"outcome", "tool_health"},
 			wantPenalties: nil,
@@ -137,9 +133,9 @@ func TestComputeHealthScore(t *testing.T) {
 				OutcomeConfidence: "high",
 				HasContextData:    true,
 				CompactionCount:   3,
-				PressureMax:       floatPtr(0.95),
+				PressureMax:       new(0.95),
 			},
-			wantScore: intPtr(80),
+			wantScore: new(80),
 			wantGrade: "B",
 			wantBasis: []string{"outcome", "context_pressure"},
 			wantPenalties: map[string]int{
@@ -155,7 +151,7 @@ func TestComputeHealthScore(t *testing.T) {
 				HasContextData:    true,
 				CompactionCount:   1,
 			},
-			wantScore:     intPtr(100),
+			wantScore:     new(100),
 			wantGrade:     "A",
 			wantBasis:     []string{"outcome", "context_pressure"},
 			wantPenalties: nil,
@@ -172,9 +168,9 @@ func TestComputeHealthScore(t *testing.T) {
 				EditChurnCount:     10,
 				ConsecutiveFailMax: 5,
 				CompactionCount:    10,
-				PressureMax:        floatPtr(0.99),
+				PressureMax:        new(0.99),
 			},
-			wantScore: intPtr(0),
+			wantScore: new(0),
 			wantGrade: "F",
 			wantBasis: []string{
 				"outcome", "tool_health", "context_pressure",
@@ -207,7 +203,7 @@ func TestComputeHealthScore(t *testing.T) {
 				OutcomeConfidence: "low",
 				HasToolCalls:      true,
 			},
-			wantScore:     intPtr(100),
+			wantScore:     new(100),
 			wantGrade:     "A",
 			wantBasis:     []string{"outcome", "tool_health"},
 			wantPenalties: nil,
@@ -219,7 +215,7 @@ func TestComputeHealthScore(t *testing.T) {
 				OutcomeConfidence: "low",
 				HasContextData:    true,
 			},
-			wantScore:     intPtr(100),
+			wantScore:     new(100),
 			wantGrade:     "A",
 			wantBasis:     []string{"outcome", "context_pressure"},
 			wantPenalties: nil,
@@ -230,7 +226,7 @@ func TestComputeHealthScore(t *testing.T) {
 				Outcome:           "unknown",
 				OutcomeConfidence: "high",
 			},
-			wantScore:     intPtr(100),
+			wantScore:     new(100),
 			wantGrade:     "A",
 			wantBasis:     []string{"outcome"},
 			wantPenalties: nil,
@@ -241,7 +237,7 @@ func TestComputeHealthScore(t *testing.T) {
 				Outcome:           "completed",
 				OutcomeConfidence: "high",
 			},
-			wantScore:     intPtr(100),
+			wantScore:     new(100),
 			wantGrade:     "A",
 			wantBasis:     []string{"outcome"},
 			wantPenalties: nil,
@@ -252,9 +248,9 @@ func TestComputeHealthScore(t *testing.T) {
 				Outcome:           "completed",
 				OutcomeConfidence: "high",
 				HasContextData:    true,
-				PressureMax:       floatPtr(0.9),
+				PressureMax:       new(0.9),
 			},
-			wantScore:     intPtr(100),
+			wantScore:     new(100),
 			wantGrade:     "A",
 			wantBasis:     []string{"outcome", "context_pressure"},
 			wantPenalties: nil,
@@ -267,7 +263,7 @@ func TestComputeHealthScore(t *testing.T) {
 				HasToolCalls:       true,
 				FailureSignalCount: 10,
 			},
-			wantScore: intPtr(40),
+			wantScore: new(40),
 			wantGrade: "D",
 			wantBasis: []string{"outcome", "tool_health"},
 			wantPenalties: map[string]int{
@@ -283,7 +279,7 @@ func TestComputeHealthScore(t *testing.T) {
 				HasToolCalls:      true,
 				RetryCount:        10,
 			},
-			wantScore: intPtr(75),
+			wantScore: new(75),
 			wantGrade: "B",
 			wantBasis: []string{"outcome", "tool_health"},
 			wantPenalties: map[string]int{
@@ -298,7 +294,7 @@ func TestComputeHealthScore(t *testing.T) {
 				HasToolCalls:      true,
 				EditChurnCount:    10,
 			},
-			wantScore: intPtr(80),
+			wantScore: new(80),
 			wantGrade: "B",
 			wantBasis: []string{"outcome", "tool_health"},
 			wantPenalties: map[string]int{
@@ -313,7 +309,7 @@ func TestComputeHealthScore(t *testing.T) {
 				HasContextData:    true,
 				CompactionCount:   10,
 			},
-			wantScore: intPtr(85),
+			wantScore: new(85),
 			wantGrade: "B",
 			wantBasis: []string{"outcome", "context_pressure"},
 			wantPenalties: map[string]int{

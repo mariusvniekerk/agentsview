@@ -9,8 +9,6 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
-func ptr(s string) *string { return &s }
-
 func TestInsights_InsertAndGet(t *testing.T) {
 	d := testDB(t)
 	ctx := context.Background()
@@ -19,10 +17,10 @@ func TestInsights_InsertAndGet(t *testing.T) {
 		Type:     "daily_activity",
 		DateFrom: "2025-01-15",
 		DateTo:   "2025-01-15",
-		Project:  ptr("my-app"),
+		Project:  new("my-app"),
 		Agent:    "claude",
-		Model:    ptr("claude-sonnet-4-20250514"),
-		Prompt:   ptr("What happened today?"),
+		Model:    new("claude-sonnet-4-20250514"),
+		Prompt:   new("What happened today?"),
 		Content:  "# Summary\nStuff happened.",
 	}
 
@@ -100,10 +98,10 @@ func TestListInsights(t *testing.T) {
 
 	seedFiltersData := func(t *testing.T, d *DB) []int64 {
 		entries := []Insight{
-			{Type: "daily_activity", DateFrom: "2025-01-15", DateTo: "2025-01-15", Project: ptr("app-a"), Agent: "claude", Content: "Day 1 app-a"},
-			{Type: "daily_activity", DateFrom: "2025-01-15", DateTo: "2025-01-15", Project: ptr("app-b"), Agent: "claude", Content: "Day 1 app-b"},
+			{Type: "daily_activity", DateFrom: "2025-01-15", DateTo: "2025-01-15", Project: new("app-a"), Agent: "claude", Content: "Day 1 app-a"},
+			{Type: "daily_activity", DateFrom: "2025-01-15", DateTo: "2025-01-15", Project: new("app-b"), Agent: "claude", Content: "Day 1 app-b"},
 			{Type: "agent_analysis", DateFrom: "2025-01-15", DateTo: "2025-01-15", Agent: "claude", Content: "Analysis"},
-			{Type: "daily_activity", DateFrom: "2025-01-16", DateTo: "2025-01-16", Project: ptr("app-a"), Agent: "claude", Content: "Day 2 app-a"},
+			{Type: "daily_activity", DateFrom: "2025-01-16", DateTo: "2025-01-16", Project: new("app-a"), Agent: "claude", Content: "Day 2 app-a"},
 		}
 		var ids []int64
 		for _, s := range entries {

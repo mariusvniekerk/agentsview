@@ -26,9 +26,9 @@ func TestUpdateSessionSignals(t *testing.T) {
 		FinalFailureStreak:     0,
 		SignalsPendingSince:    nil,
 		CompactionCount:        2,
-		ContextPressureMax:     Ptr(0.85),
-		HealthScore:            Ptr(72),
-		HealthGrade:            Ptr("B"),
+		ContextPressureMax:     new(0.85),
+		HealthScore:            new(72),
+		HealthGrade:            new("B"),
 	}
 	if err := d.UpdateSessionSignals("sig-1", update); err != nil {
 		t.Fatalf("UpdateSessionSignals: %v", err)
@@ -201,7 +201,7 @@ func TestPendingSignalSessions(t *testing.T) {
 	old := SessionSignalUpdate{
 		Outcome:             "unknown",
 		OutcomeConfidence:   "low",
-		SignalsPendingSince: Ptr("2024-06-01T10:00:00Z"),
+		SignalsPendingSince: new("2024-06-01T10:00:00Z"),
 	}
 	if err := d.UpdateSessionSignals("ps-old", old); err != nil {
 		t.Fatalf("UpdateSessionSignals ps-old: %v", err)
@@ -212,7 +212,7 @@ func TestPendingSignalSessions(t *testing.T) {
 	newer := SessionSignalUpdate{
 		Outcome:             "unknown",
 		OutcomeConfidence:   "low",
-		SignalsPendingSince: Ptr("2024-06-01T14:00:00Z"),
+		SignalsPendingSince: new("2024-06-01T14:00:00Z"),
 	}
 	if err := d.UpdateSessionSignals("ps-new", newer); err != nil {
 		t.Fatalf("UpdateSessionSignals ps-new: %v", err)

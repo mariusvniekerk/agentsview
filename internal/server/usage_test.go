@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/wesm/agentsview/internal/db"
-	"github.com/wesm/agentsview/internal/dbtest"
 	"github.com/wesm/agentsview/internal/server"
 )
 
@@ -89,7 +88,7 @@ func seedUsageEnv(t *testing.T, te *testEnv) {
 				sess.Agent = e.agent
 				sess.StartedAt = &e.started
 				sess.EndedAt = &e.started
-				sess.FirstMessage = dbtest.Ptr("Usage test")
+				sess.FirstMessage = new("Usage test")
 			},
 		)
 		started := e.started

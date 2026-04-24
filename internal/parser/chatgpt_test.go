@@ -487,7 +487,7 @@ func TestLinearizeDAG(t *testing.T) {
 		},
 		"b": {
 			ID:     "b",
-			Parent: strPtr("a"),
+			Parent: new("a"),
 		},
 	}
 
@@ -753,8 +753,6 @@ func rawParts(ss ...string) []json.RawMessage {
 	}
 	return parts
 }
-
-func strPtr(s string) *string { return &s }
 
 type mockAssetResolver struct {
 	files   map[string]string

@@ -378,9 +378,9 @@ func (te *testEnv) seedSession(
 		s.Machine = "test"
 		s.MessageCount = msgCount
 		s.UserMessageCount = max(msgCount, 2)
-		s.StartedAt = dbtest.Ptr(tsSeed)
-		s.EndedAt = dbtest.Ptr(tsSeedEnd)
-		s.FirstMessage = dbtest.Ptr("Hello world")
+		s.StartedAt = new(tsSeed)
+		s.EndedAt = new(tsSeedEnd)
+		s.FirstMessage = new("Hello world")
 		for _, opt := range opts {
 			opt(s)
 		}
@@ -869,16 +869,16 @@ func TestGetChildSessions_Found(t *testing.T) {
 	te := setup(t)
 	te.seedSession(t, "parent-1", "my-app", 10)
 	te.seedSession(t, "child-a", "my-app", 3, func(s *db.Session) {
-		s.ParentSessionID = dbtest.Ptr("parent-1")
+		s.ParentSessionID = new("parent-1")
 		s.RelationshipType = "subagent"
-		s.StartedAt = dbtest.Ptr("2025-01-15T10:05:00Z")
-		s.EndedAt = dbtest.Ptr("2025-01-15T10:10:00Z")
+		s.StartedAt = new("2025-01-15T10:05:00Z")
+		s.EndedAt = new("2025-01-15T10:10:00Z")
 	})
 	te.seedSession(t, "child-b", "my-app", 2, func(s *db.Session) {
-		s.ParentSessionID = dbtest.Ptr("parent-1")
+		s.ParentSessionID = new("parent-1")
 		s.RelationshipType = "fork"
-		s.StartedAt = dbtest.Ptr("2025-01-15T10:15:00Z")
-		s.EndedAt = dbtest.Ptr("2025-01-15T10:20:00Z")
+		s.StartedAt = new("2025-01-15T10:15:00Z")
+		s.EndedAt = new("2025-01-15T10:20:00Z")
 	})
 
 	w := te.get(t, "/api/v1/sessions/parent-1/children")
@@ -2148,7 +2148,7 @@ func TestMarkdownSessionExport_DepthOneIncludesChildSessions(t *testing.T) {
 		}}
 	})
 	te.seedSession(t, "child-a", "my-app", 1, func(s *db.Session) {
-		s.ParentSessionID = dbtest.Ptr("parent")
+		s.ParentSessionID = new("parent")
 		s.RelationshipType = "subagent"
 	})
 	te.seedMessages(t, "child-a", 1)
@@ -2175,7 +2175,7 @@ func TestMarkdownSessionExport_DefaultOmitsChildSessions(t *testing.T) {
 		}}
 	})
 	te.seedSession(t, "child-a", "my-app", 1, func(s *db.Session) {
-		s.ParentSessionID = dbtest.Ptr("parent")
+		s.ParentSessionID = new("parent")
 		s.RelationshipType = "subagent"
 	})
 	te.seedMessages(t, "child-a", 1)
@@ -2203,7 +2203,7 @@ func TestMarkdownSessionExport_DepthAllRecurses(t *testing.T) {
 		}}
 	})
 	te.seedSession(t, "child-a", "my-app", 1, func(s *db.Session) {
-		s.ParentSessionID = dbtest.Ptr("root")
+		s.ParentSessionID = new("root")
 		s.RelationshipType = "subagent"
 	})
 	te.seedMessages(t, "child-a", 1, func(i int, m *db.Message) {
@@ -2219,7 +2219,7 @@ func TestMarkdownSessionExport_DepthAllRecurses(t *testing.T) {
 		}}
 	})
 	te.seedSession(t, "child-b", "my-app", 1, func(s *db.Session) {
-		s.ParentSessionID = dbtest.Ptr("child-a")
+		s.ParentSessionID = new("child-a")
 		s.RelationshipType = "subagent"
 	})
 	te.seedMessages(t, "child-b", 1)

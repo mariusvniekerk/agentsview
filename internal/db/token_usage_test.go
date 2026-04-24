@@ -484,9 +484,9 @@ func TestIncrementalUpdatePreservesTokenTotals(t *testing.T) {
 		PeakContextTokens:    8000,
 		HasTotalOutputTokens: true,
 		HasPeakContextTokens: true,
-		FilePath:             Ptr("/tmp/s.jsonl"),
-		FileSize:             Ptr(int64(2048)),
-		FileMtime:            Ptr(int64(100)),
+		FilePath:             new("/tmp/s.jsonl"),
+		FileSize:             new(int64(2048)),
+		FileMtime:            new(int64(100)),
 	}
 	requireNoError(t, d.UpsertSession(s), "upsert")
 

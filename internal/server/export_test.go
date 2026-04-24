@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/wesm/agentsview/internal/db"
-	"github.com/wesm/agentsview/internal/dbtest"
 )
 
 // testSession returns a *db.Session with sensible defaults.
@@ -23,7 +22,7 @@ func testSession(
 		Project:      "proj",
 		Agent:        "claude",
 		MessageCount: 0,
-		StartedAt:    dbtest.Ptr("2025-01-15T10:00:00Z"),
+		StartedAt:    new("2025-01-15T10:00:00Z"),
 	}
 	for _, o := range opts {
 		o(s)
@@ -148,20 +147,20 @@ func TestFormatDateShort(t *testing.T) {
 		want string
 	}{
 		{"Nil", nil, "unknown"},
-		{"Empty", dbtest.Ptr(""), "unknown"},
+		{"Empty", new(""), "unknown"},
 		{
 			"Valid",
-			dbtest.Ptr("2025-01-15T10:30:00Z"),
+			new("2025-01-15T10:30:00Z"),
 			"20250115",
 		},
 		{
 			"Nano",
-			dbtest.Ptr("2025-06-01T08:15:30.999Z"),
+			new("2025-06-01T08:15:30.999Z"),
 			"20250601",
 		},
 		{
 			"Unparseable",
-			dbtest.Ptr("garbage"),
+			new("garbage"),
 			"unknown",
 		},
 	}
@@ -361,7 +360,7 @@ func TestGenerateExportHTML_Structure(t *testing.T) {
 	session := testSession(func(s *db.Session) {
 		s.Project = "my-project"
 		s.MessageCount = 2
-		s.FirstMessage = dbtest.Ptr("Hello")
+		s.FirstMessage = new("Hello")
 	})
 	msgs := []db.Message{
 		{
@@ -555,7 +554,7 @@ func TestGenerateExportMarkdown_OmitsEmptyOptionalAttributes(t *testing.T) {
 				ID:              "child-1",
 				Project:         "proj",
 				Agent:           "claude",
-				ParentSessionID: dbtest.Ptr("test-id"),
+				ParentSessionID: new("test-id"),
 				StartedAt:       &childStarted,
 			},
 		}},
@@ -632,7 +631,7 @@ func TestGenerateExportMarkdown_SanitizesHeadingAndAvoidsDuplicateAnchors(t *tes
 			ID:               "child-a",
 			Project:          "proj",
 			Agent:            "claude",
-			ParentSessionID:  dbtest.Ptr("test-id"),
+			ParentSessionID:  new("test-id"),
 			RelationshipType: "subagent",
 		},
 		Messages: []db.Message{{

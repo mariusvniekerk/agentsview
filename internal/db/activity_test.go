@@ -12,7 +12,7 @@ func TestGetSessionActivity(t *testing.T) {
 	err := d.UpsertSession(Session{
 		ID:        sid,
 		Agent:     "claude",
-		StartedAt: Ptr("2026-03-26T10:00:00Z"),
+		StartedAt: new("2026-03-26T10:00:00Z"),
 	})
 	if err != nil {
 		t.Fatal(err)

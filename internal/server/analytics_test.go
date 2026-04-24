@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/wesm/agentsview/internal/db"
-	"github.com/wesm/agentsview/internal/dbtest"
 )
 
 const basePath = "/api/v1/analytics/"
@@ -64,7 +63,7 @@ func seedAnalyticsEnv(t *testing.T, te *testEnv) seedStats {
 				sess.Agent = s.agent
 				sess.StartedAt = &started
 				sess.EndedAt = &started
-				sess.FirstMessage = dbtest.Ptr("Hello")
+				sess.FirstMessage = new("Hello")
 			},
 		)
 		te.seedMessages(t, s.id, s.msgs,
@@ -126,7 +125,7 @@ func seedAnalyticsTokenEnv(t *testing.T, te *testEnv) seedStats {
 				sess.Agent = s.agent
 				sess.StartedAt = &s.started
 				sess.EndedAt = &s.started
-				sess.FirstMessage = dbtest.Ptr("Token seeded")
+				sess.FirstMessage = new("Token seeded")
 				sess.TotalOutputTokens = s.outputTokens
 				sess.HasTotalOutputTokens = s.hasTokens
 			},
@@ -856,9 +855,9 @@ func TestSessionCountConsistency(t *testing.T) {
 		te.seedSession(t, id, "proj-a", 10,
 			func(s *db.Session) {
 				s.Agent = "claude"
-				s.StartedAt = dbtest.Ptr(
+				s.StartedAt = new(
 					"2024-06-01T09:00:00Z")
-				s.EndedAt = dbtest.Ptr(
+				s.EndedAt = new(
 					"2024-06-01T10:00:00Z")
 			},
 		)
@@ -871,11 +870,11 @@ func TestSessionCountConsistency(t *testing.T) {
 		te.seedSession(t, id, "proj-a", 8,
 			func(s *db.Session) {
 				s.Agent = "claude"
-				s.ParentSessionID = dbtest.Ptr("root-0")
+				s.ParentSessionID = new("root-0")
 				s.RelationshipType = "subagent"
-				s.StartedAt = dbtest.Ptr(
+				s.StartedAt = new(
 					"2024-06-01T09:00:00Z")
-				s.EndedAt = dbtest.Ptr(
+				s.EndedAt = new(
 					"2024-06-01T10:00:00Z")
 			},
 		)
@@ -888,11 +887,11 @@ func TestSessionCountConsistency(t *testing.T) {
 		te.seedSession(t, id, "proj-a", 6,
 			func(s *db.Session) {
 				s.Agent = "claude"
-				s.ParentSessionID = dbtest.Ptr("root-1")
+				s.ParentSessionID = new("root-1")
 				s.RelationshipType = "fork"
-				s.StartedAt = dbtest.Ptr(
+				s.StartedAt = new(
 					"2024-06-01T09:00:00Z")
-				s.EndedAt = dbtest.Ptr(
+				s.EndedAt = new(
 					"2024-06-01T10:00:00Z")
 			},
 		)
@@ -905,9 +904,9 @@ func TestSessionCountConsistency(t *testing.T) {
 		te.seedSession(t, id, "proj-a", 0,
 			func(s *db.Session) {
 				s.Agent = "claude"
-				s.StartedAt = dbtest.Ptr(
+				s.StartedAt = new(
 					"2024-06-01T09:00:00Z")
-				s.EndedAt = dbtest.Ptr(
+				s.EndedAt = new(
 					"2024-06-01T10:00:00Z")
 			},
 		)
@@ -917,11 +916,11 @@ func TestSessionCountConsistency(t *testing.T) {
 	te.seedSession(t, "cont-0", "proj-a", 5,
 		func(s *db.Session) {
 			s.Agent = "claude"
-			s.ParentSessionID = dbtest.Ptr("root-2")
+			s.ParentSessionID = new("root-2")
 			s.RelationshipType = "continuation"
-			s.StartedAt = dbtest.Ptr(
+			s.StartedAt = new(
 				"2024-06-01T09:00:00Z")
-			s.EndedAt = dbtest.Ptr(
+			s.EndedAt = new(
 				"2024-06-01T10:00:00Z")
 		},
 	)

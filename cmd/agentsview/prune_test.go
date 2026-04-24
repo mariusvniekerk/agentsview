@@ -177,8 +177,8 @@ func TestConfirm(t *testing.T) {
 
 func TestWriteSummary(t *testing.T) {
 	sessions := []db.Session{
-		{ID: "s1", Project: "projA", FileSize: dbtest.Ptr(int64(1024))},
-		{ID: "s2", Project: "projA", FileSize: dbtest.Ptr(int64(2048))},
+		{ID: "s1", Project: "projA", FileSize: new(int64(1024))},
+		{ID: "s2", Project: "projA", FileSize: new(int64(2048))},
 		{ID: "s3", Project: "projB"},
 	}
 
@@ -260,7 +260,7 @@ func TestPrunerMaxMessagesCountsUserOnly(t *testing.T) {
 
 	pruner, buf := newTestPruner(t, d, "")
 	cfg := PruneConfig{
-		Filter: db.PruneFilter{MaxMessages: dbtest.Ptr(1)},
+		Filter: db.PruneFilter{MaxMessages: new(1)},
 		DryRun: true,
 	}
 
@@ -322,7 +322,7 @@ func TestPruner_PruneScenarios(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			d := dbtest.OpenTestDB(t)
 			dbtest.SeedSession(t, d, "s1", "test", func(s *db.Session) {
-				s.EndedAt = dbtest.Ptr("2024-01-01T00:00:00Z")
+				s.EndedAt = new("2024-01-01T00:00:00Z")
 				s.MessageCount = 0
 			})
 
@@ -364,7 +364,7 @@ func TestDeleteFilesRemovesFiles(t *testing.T) {
 	}
 
 	sessions := []db.Session{
-		{ID: "s1", FilePath: dbtest.Ptr(f)},
+		{ID: "s1", FilePath: new(f)},
 	}
 
 	removed, reclaimed := deleteFiles(sessions)
@@ -388,7 +388,7 @@ func TestDeleteFilesRemovesFiles(t *testing.T) {
 
 func TestDeleteFilesMissingFile(t *testing.T) {
 	sessions := []db.Session{
-		{ID: "s1", FilePath: dbtest.Ptr("/nonexistent/path/file.jsonl")},
+		{ID: "s1", FilePath: new("/nonexistent/path/file.jsonl")},
 	}
 
 	removed, reclaimed := deleteFiles(sessions)

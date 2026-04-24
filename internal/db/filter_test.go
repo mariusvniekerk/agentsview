@@ -99,21 +99,21 @@ func TestSessionFilterActiveSince(t *testing.T) {
 
 	// Session that started and ended long ago.
 	insertSession(t, d, "old", "proj", func(s *Session) {
-		s.StartedAt = Ptr("2024-01-01T10:00:00Z")
-		s.EndedAt = Ptr("2024-01-01T11:00:00Z")
+		s.StartedAt = new("2024-01-01T10:00:00Z")
+		s.EndedAt = new("2024-01-01T11:00:00Z")
 		s.MessageCount = 5
 	})
 
 	// Session that started long ago but ended recently.
 	insertSession(t, d, "recent-end", "proj", func(s *Session) {
-		s.StartedAt = Ptr("2024-01-01T10:00:00Z")
-		s.EndedAt = Ptr("2024-06-03T10:00:00Z")
+		s.StartedAt = new("2024-01-01T10:00:00Z")
+		s.EndedAt = new("2024-06-03T10:00:00Z")
 		s.MessageCount = 5
 	})
 
 	// Session that started recently, no ended_at.
 	insertSession(t, d, "recent-start", "proj", func(s *Session) {
-		s.StartedAt = Ptr("2024-06-03T08:00:00Z")
+		s.StartedAt = new("2024-06-03T08:00:00Z")
 		s.MessageCount = 5
 	})
 
@@ -299,7 +299,7 @@ func TestListSessionsExcludesRelationshipTypes(t *testing.T) {
 	// Fork session -- should be excluded.
 	insertSession(t, d, "fork1", "proj", func(s *Session) {
 		s.MessageCount = 5
-		s.ParentSessionID = Ptr("normal")
+		s.ParentSessionID = new("normal")
 		s.RelationshipType = "fork"
 	})
 
@@ -313,8 +313,8 @@ func TestIncludeChildrenBypassesFilters(t *testing.T) {
 	// Parent session: claude agent, dated 2024-06-01, 10 messages.
 	insertSession(t, d, "parent", "proj", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-01T10:00:00Z")
-		s.EndedAt = Ptr("2024-06-01T11:00:00Z")
+		s.StartedAt = new("2024-06-01T10:00:00Z")
+		s.EndedAt = new("2024-06-01T11:00:00Z")
 		s.MessageCount = 10
 		s.UserMessageCount = 5
 	})
@@ -322,22 +322,22 @@ func TestIncludeChildrenBypassesFilters(t *testing.T) {
 	// Subagent child: different agent, different date, 1 message.
 	insertSession(t, d, "child-sub", "proj", func(s *Session) {
 		s.Agent = "codex"
-		s.StartedAt = Ptr("2024-07-15T10:00:00Z")
-		s.EndedAt = Ptr("2024-07-15T11:00:00Z")
+		s.StartedAt = new("2024-07-15T10:00:00Z")
+		s.EndedAt = new("2024-07-15T11:00:00Z")
 		s.MessageCount = 1
 		s.UserMessageCount = 1
-		s.ParentSessionID = Ptr("parent")
+		s.ParentSessionID = new("parent")
 		s.RelationshipType = "subagent"
 	})
 
 	// Fork child: same agent but fewer messages than filter.
 	insertSession(t, d, "child-fork", "proj", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-02T10:00:00Z")
-		s.EndedAt = Ptr("2024-06-02T11:00:00Z")
+		s.StartedAt = new("2024-06-02T10:00:00Z")
+		s.EndedAt = new("2024-06-02T11:00:00Z")
 		s.MessageCount = 2
 		s.UserMessageCount = 1
-		s.ParentSessionID = Ptr("parent")
+		s.ParentSessionID = new("parent")
 		s.RelationshipType = "fork"
 	})
 
@@ -401,7 +401,7 @@ func TestIncludeChildrenScopesToMatchingParent(t *testing.T) {
 		s.Agent = "codex"
 		s.MessageCount = 2
 		s.UserMessageCount = 1
-		s.ParentSessionID = Ptr("parentA")
+		s.ParentSessionID = new("parentA")
 		s.RelationshipType = "subagent"
 	})
 
@@ -416,7 +416,7 @@ func TestIncludeChildrenScopesToMatchingParent(t *testing.T) {
 		s.Agent = "gemini"
 		s.MessageCount = 2
 		s.UserMessageCount = 1
-		s.ParentSessionID = Ptr("parentB")
+		s.ParentSessionID = new("parentB")
 		s.RelationshipType = "subagent"
 	})
 
@@ -433,7 +433,7 @@ func TestIncludeChildrenScopesToMatchingParent(t *testing.T) {
 		s.Agent = "gemini"
 		s.MessageCount = 2
 		s.UserMessageCount = 1
-		s.ParentSessionID = Ptr("parentC")
+		s.ParentSessionID = new("parentC")
 		s.RelationshipType = "subagent"
 	})
 
@@ -510,7 +510,7 @@ func TestIncludeChildrenExcludesOrphanSubagents(t *testing.T) {
 	insertSession(t, d, "root-sub", "proj", func(s *Session) {
 		s.MessageCount = 2
 		s.UserMessageCount = 1
-		s.ParentSessionID = Ptr("root")
+		s.ParentSessionID = new("root")
 		s.RelationshipType = "subagent"
 	})
 
@@ -519,7 +519,7 @@ func TestIncludeChildrenExcludesOrphanSubagents(t *testing.T) {
 	insertSession(t, d, "orphan-sub", "proj", func(s *Session) {
 		s.MessageCount = 2
 		s.UserMessageCount = 1
-		s.ParentSessionID = Ptr("missing-parent-id")
+		s.ParentSessionID = new("missing-parent-id")
 		s.RelationshipType = "subagent"
 	})
 
@@ -534,7 +534,7 @@ func TestIncludeChildrenExcludesOrphanSubagents(t *testing.T) {
 	insertSession(t, d, "auto-sub", "proj", func(s *Session) {
 		s.MessageCount = 2
 		s.UserMessageCount = 1
-		s.ParentSessionID = Ptr("auto-root")
+		s.ParentSessionID = new("auto-root")
 		s.RelationshipType = "subagent"
 	})
 
@@ -542,7 +542,7 @@ func TestIncludeChildrenExcludesOrphanSubagents(t *testing.T) {
 	insertSession(t, d, "orphan-fork", "proj", func(s *Session) {
 		s.MessageCount = 2
 		s.UserMessageCount = 1
-		s.ParentSessionID = Ptr("also-missing")
+		s.ParentSessionID = new("also-missing")
 		s.RelationshipType = "fork"
 	})
 
@@ -577,7 +577,7 @@ func TestIncludeChildrenKeepsNestedDescendants(t *testing.T) {
 		s.Agent = "claude"
 		s.MessageCount = 4
 		s.UserMessageCount = 1
-		s.ParentSessionID = Ptr("root")
+		s.ParentSessionID = new("root")
 		s.RelationshipType = "subagent"
 	})
 	// Fork spawned inside the subagent thread (depth-2).
@@ -585,7 +585,7 @@ func TestIncludeChildrenKeepsNestedDescendants(t *testing.T) {
 		s.Agent = "claude"
 		s.MessageCount = 3
 		s.UserMessageCount = 1
-		s.ParentSessionID = Ptr("sub")
+		s.ParentSessionID = new("sub")
 		s.RelationshipType = "fork"
 	})
 
@@ -620,14 +620,14 @@ func TestIncludeChildrenExcludesFilteredNestedRoots(t *testing.T) {
 		s.Agent = "codex"
 		s.MessageCount = 4
 		s.UserMessageCount = 1
-		s.ParentSessionID = Ptr("root")
+		s.ParentSessionID = new("root")
 		s.RelationshipType = "subagent"
 	})
 	insertSession(t, d, "nested-fork", "proj", func(s *Session) {
 		s.Agent = "codex"
 		s.MessageCount = 3
 		s.UserMessageCount = 1
-		s.ParentSessionID = Ptr("sub")
+		s.ParentSessionID = new("sub")
 		s.RelationshipType = "fork"
 	})
 
@@ -656,13 +656,13 @@ func TestIncludeChildrenNoFiltersExcludesOrphanChildren(t *testing.T) {
 	insertSession(t, d, "child", "proj", func(s *Session) {
 		s.MessageCount = 2
 		s.UserMessageCount = 1
-		s.ParentSessionID = Ptr("root")
+		s.ParentSessionID = new("root")
 		s.RelationshipType = "subagent"
 	})
 	insertSession(t, d, "orphan", "proj", func(s *Session) {
 		s.MessageCount = 2
 		s.UserMessageCount = 1
-		s.ParentSessionID = Ptr("nowhere")
+		s.ParentSessionID = new("nowhere")
 		s.RelationshipType = "subagent"
 	})
 
@@ -687,7 +687,7 @@ func TestIncludeChildrenExcludeOneShotAgent(t *testing.T) {
 		s.Agent = "codex"
 		s.MessageCount = 2
 		s.UserMessageCount = 1
-		s.ParentSessionID = Ptr("root")
+		s.ParentSessionID = new("root")
 		s.RelationshipType = "subagent"
 	})
 	// One-shot fork (claude) — should be included via parent.
@@ -695,7 +695,7 @@ func TestIncludeChildrenExcludeOneShotAgent(t *testing.T) {
 		s.Agent = "claude"
 		s.MessageCount = 2
 		s.UserMessageCount = 1
-		s.ParentSessionID = Ptr("root")
+		s.ParentSessionID = new("root")
 		s.RelationshipType = "fork"
 	})
 	// One-shot standalone (not a child) — should be excluded.
@@ -751,8 +751,8 @@ func TestActiveSinceUsesEndedAtOverStartedAt(t *testing.T) {
 	// A date_from filter for June would miss it (started too early),
 	// but active_since should catch it via ended_at.
 	insertSession(t, d, "s1", "proj", func(s *Session) {
-		s.StartedAt = Ptr("2024-01-15T10:00:00Z")
-		s.EndedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-01-15T10:00:00Z")
+		s.EndedAt = new("2024-06-15T10:00:00Z")
 		s.MessageCount = 5
 	})
 

@@ -29,15 +29,15 @@ func TestBuildPrompt(t *testing.T) {
 			seed: func(t *testing.T, d *db.DB) {
 				dbtest.SeedSession(t, d, "s1", "my-app", func(s *db.Session) {
 					s.MessageCount = 5
-					s.StartedAt = dbtest.Ptr("2025-01-15T10:00:00Z")
-					s.EndedAt = dbtest.Ptr("2025-01-15T11:00:00Z")
-					s.FirstMessage = dbtest.Ptr("Fix the login bug")
+					s.StartedAt = new("2025-01-15T10:00:00Z")
+					s.EndedAt = new("2025-01-15T11:00:00Z")
+					s.FirstMessage = new("Fix the login bug")
 				})
 				dbtest.SeedSession(t, d, "s2", "other-app", func(s *db.Session) {
 					s.MessageCount = 3
-					s.StartedAt = dbtest.Ptr("2025-01-15T14:00:00Z")
-					s.EndedAt = dbtest.Ptr("2025-01-15T15:00:00Z")
-					s.FirstMessage = dbtest.Ptr("Add tests")
+					s.StartedAt = new("2025-01-15T14:00:00Z")
+					s.EndedAt = new("2025-01-15T15:00:00Z")
+					s.FirstMessage = new("Add tests")
 				})
 			},
 			wantContains: []string{
@@ -62,13 +62,13 @@ func TestBuildPrompt(t *testing.T) {
 			seed: func(t *testing.T, d *db.DB) {
 				dbtest.SeedSession(t, d, "s1", "my-app", func(s *db.Session) {
 					s.MessageCount = 5
-					s.StartedAt = dbtest.Ptr("2025-01-15T10:00:00Z")
-					s.EndedAt = dbtest.Ptr("2025-01-15T11:00:00Z")
+					s.StartedAt = new("2025-01-15T10:00:00Z")
+					s.EndedAt = new("2025-01-15T11:00:00Z")
 				})
 				dbtest.SeedSession(t, d, "s2", "other-app", func(s *db.Session) {
 					s.MessageCount = 3
-					s.StartedAt = dbtest.Ptr("2025-01-15T14:00:00Z")
-					s.EndedAt = dbtest.Ptr("2025-01-15T15:00:00Z")
+					s.StartedAt = new("2025-01-15T14:00:00Z")
+					s.EndedAt = new("2025-01-15T15:00:00Z")
 				})
 			},
 			wantContains: []string{"Project: my-app"},
@@ -111,8 +111,8 @@ func TestBuildPrompt(t *testing.T) {
 						fmt.Sprintf("s%d", i), "my-app",
 						func(s *db.Session) {
 							s.MessageCount = 1
-							s.StartedAt = dbtest.Ptr("2025-01-15T10:00:00Z")
-							s.EndedAt = dbtest.Ptr(fmt.Sprintf("2025-01-15T11:%02d:00Z", i))
+							s.StartedAt = new("2025-01-15T10:00:00Z")
+							s.EndedAt = new(fmt.Sprintf("2025-01-15T11:%02d:00Z", i))
 						},
 					)
 				}
@@ -135,11 +135,11 @@ func TestBuildPrompt(t *testing.T) {
 			seed: func(t *testing.T, d *db.DB) {
 				dbtest.SeedSession(t, d, "s1", "my-app", func(s *db.Session) {
 					s.MessageCount = 3
-					s.StartedAt = dbtest.Ptr("2025-01-13T10:00:00Z")
+					s.StartedAt = new("2025-01-13T10:00:00Z")
 				})
 				dbtest.SeedSession(t, d, "s2", "my-app", func(s *db.Session) {
 					s.MessageCount = 2
-					s.StartedAt = dbtest.Ptr("2025-01-17T14:00:00Z")
+					s.StartedAt = new("2025-01-17T14:00:00Z")
 				})
 			},
 			wantContains: []string{"Date Range: 2025-01-13 to 2025-01-17"},
@@ -175,18 +175,18 @@ func TestBuildPrompt(t *testing.T) {
 				dbtest.SeedSession(t, d, "user-session", "my-app", func(s *db.Session) {
 					s.MessageCount = 5
 					s.UserMessageCount = 2
-					s.StartedAt = dbtest.Ptr("2025-01-15T10:00:00Z")
-					s.EndedAt = dbtest.Ptr("2025-01-15T11:00:00Z")
-					s.FirstMessage = dbtest.Ptr("Fix the login bug")
+					s.StartedAt = new("2025-01-15T10:00:00Z")
+					s.EndedAt = new("2025-01-15T11:00:00Z")
+					s.FirstMessage = new("Fix the login bug")
 				})
 				// An automated session: roborev review, single-turn,
 				// is_automated must be true.
 				dbtest.SeedSession(t, d, "auto-session", "my-app", func(s *db.Session) {
 					s.MessageCount = 2
 					s.UserMessageCount = 1
-					s.StartedAt = dbtest.Ptr("2025-01-15T12:00:00Z")
-					s.EndedAt = dbtest.Ptr("2025-01-15T12:05:00Z")
-					s.FirstMessage = dbtest.Ptr(
+					s.StartedAt = new("2025-01-15T12:00:00Z")
+					s.EndedAt = new("2025-01-15T12:05:00Z")
+					s.FirstMessage = new(
 						"You are a code reviewer. Review the diff.",
 					)
 					s.IsAutomated = true

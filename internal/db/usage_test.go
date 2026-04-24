@@ -49,8 +49,8 @@ func TestGetDailyUsageWithData(t *testing.T) {
 
 	insertSession(t, d, "sess1", "proj1", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
-		s.EndedAt = Ptr("2024-06-15T11:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
+		s.EndedAt = new("2024-06-15T11:00:00Z")
 	})
 
 	tokenUsage := `{
@@ -164,7 +164,7 @@ func TestGetDailyUsage_CacheSavingsUsesPerModelRates(t *testing.T) {
 
 	insertSession(t, d, "s-opus", "proj", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID: "s-opus", Ordinal: 0,
@@ -174,7 +174,7 @@ func TestGetDailyUsage_CacheSavingsUsesPerModelRates(t *testing.T) {
 
 	insertSession(t, d, "s-sonnet", "proj", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:05:00Z")
+		s.StartedAt = new("2024-06-15T10:05:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID: "s-sonnet", Ordinal: 0,
@@ -234,7 +234,7 @@ func TestGetDailyUsageAgentFilter(t *testing.T) {
 	// Claude session
 	insertSession(t, d, "sess-claude", "proj1", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID:  "sess-claude",
@@ -248,7 +248,7 @@ func TestGetDailyUsageAgentFilter(t *testing.T) {
 	// Codex session
 	insertSession(t, d, "sess-codex", "proj1", func(s *Session) {
 		s.Agent = "codex"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID:  "sess-codex",
@@ -303,7 +303,7 @@ func TestGetDailyUsageMultipleDaysAndModels(t *testing.T) {
 	// Day 1: two models
 	insertSession(t, d, "sess-d1", "proj1", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-10T08:00:00Z")
+		s.StartedAt = new("2024-06-10T08:00:00Z")
 	})
 	insertMessages(t, d,
 		Message{
@@ -327,7 +327,7 @@ func TestGetDailyUsageMultipleDaysAndModels(t *testing.T) {
 	// Day 2: one model
 	insertSession(t, d, "sess-d2", "proj1", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-11T08:00:00Z")
+		s.StartedAt = new("2024-06-11T08:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID:  "sess-d2",
@@ -406,7 +406,7 @@ func TestGetDailyUsageNoPricing(t *testing.T) {
 
 	insertSession(t, d, "sess1", "proj1", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID:  "sess1",
@@ -466,7 +466,7 @@ func TestGetDailyUsageTruncatedTokenJSON(t *testing.T) {
 
 	insertSession(t, d, "sess1", "proj1", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 
 	insertMessages(t, d,
@@ -636,7 +636,7 @@ func TestGetDailyUsageLongLivedSession(t *testing.T) {
 	requireNoError(t, d.UpsertSession(Session{
 		ID: "long-lived", Project: "proj", Machine: "local",
 		Agent:     "claude",
-		StartedAt: Ptr("2026-04-01T10:00:00Z"),
+		StartedAt: new("2026-04-01T10:00:00Z"),
 	}), "upsert session")
 
 	insertMessages(t, d,
@@ -698,7 +698,7 @@ func TestGetDailyUsageProjectFilter(t *testing.T) {
 
 	insertSession(t, d, "sess-a", "proj-a", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID:  "sess-a",
@@ -711,7 +711,7 @@ func TestGetDailyUsageProjectFilter(t *testing.T) {
 
 	insertSession(t, d, "sess-b", "proj-b", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID:  "sess-b",
@@ -757,7 +757,7 @@ func TestGetDailyUsageModelFilter(t *testing.T) {
 
 	insertSession(t, d, "sess1", "proj1", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	insertMessages(t, d,
 		Message{
@@ -812,7 +812,7 @@ func TestGetDailyUsageProjectBreakdowns(t *testing.T) {
 
 	insertSession(t, d, "sess-a", "proj-a", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID:  "sess-a",
@@ -825,7 +825,7 @@ func TestGetDailyUsageProjectBreakdowns(t *testing.T) {
 
 	insertSession(t, d, "sess-b", "proj-b", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID:  "sess-b",
@@ -888,7 +888,7 @@ func TestGetDailyUsageAgentBreakdowns(t *testing.T) {
 
 	insertSession(t, d, "sess-claude", "proj1", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID:  "sess-claude",
@@ -901,7 +901,7 @@ func TestGetDailyUsageAgentBreakdowns(t *testing.T) {
 
 	insertSession(t, d, "sess-codex", "proj1", func(s *Session) {
 		s.Agent = "codex"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID:  "sess-codex",
@@ -979,7 +979,7 @@ func TestGetDailyUsageBreakdownInvariant(t *testing.T) {
 		sid := "sess-" + strconv.Itoa(i)
 		insertSession(t, d, sid, c.project, func(s *Session) {
 			s.Agent = c.agent
-			s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+			s.StartedAt = new("2024-06-15T10:00:00Z")
 		})
 		insertMessages(t, d,
 			Message{
@@ -1071,8 +1071,8 @@ func TestGetTopSessionsByCost(t *testing.T) {
 	// Expensive session
 	insertSession(t, d, "sBig", "proj-a", func(s *Session) {
 		s.Agent = "claude"
-		s.DisplayName = Ptr("Big Session")
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.DisplayName = new("Big Session")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID: "sBig", Ordinal: 0,
@@ -1087,8 +1087,8 @@ func TestGetTopSessionsByCost(t *testing.T) {
 	// Cheap session
 	insertSession(t, d, "sSmall", "proj-b", func(s *Session) {
 		s.Agent = "codex"
-		s.DisplayName = Ptr("Small Session")
-		s.StartedAt = Ptr("2024-06-15T11:00:00Z")
+		s.DisplayName = new("Small Session")
+		s.StartedAt = new("2024-06-15T11:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID: "sSmall", Ordinal: 0,
@@ -1164,9 +1164,9 @@ func TestGetTopSessionsByCost_DisplayNameFallback(t *testing.T) {
 	// Session with display_name set — should use display_name.
 	insertSession(t, d, "s-dn", "proj-a", func(s *Session) {
 		s.Agent = "claude"
-		s.DisplayName = Ptr("My Custom Name")
-		s.FirstMessage = Ptr("some first message")
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.DisplayName = new("My Custom Name")
+		s.FirstMessage = new("some first message")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID: "s-dn", Ordinal: 0,
@@ -1178,8 +1178,8 @@ func TestGetTopSessionsByCost_DisplayNameFallback(t *testing.T) {
 	// Session with no display_name — should fall back to first_message.
 	insertSession(t, d, "s-fm", "proj-a", func(s *Session) {
 		s.Agent = "claude"
-		s.FirstMessage = Ptr("fix the login bug")
-		s.StartedAt = Ptr("2024-06-15T11:00:00Z")
+		s.FirstMessage = new("fix the login bug")
+		s.StartedAt = new("2024-06-15T11:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID: "s-fm", Ordinal: 0,
@@ -1192,7 +1192,7 @@ func TestGetTopSessionsByCost_DisplayNameFallback(t *testing.T) {
 	// fall back to project.
 	insertSession(t, d, "s-proj", "my-project", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T12:00:00Z")
+		s.StartedAt = new("2024-06-15T12:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID: "s-proj", Ordinal: 0,
@@ -1205,7 +1205,7 @@ func TestGetTopSessionsByCost_DisplayNameFallback(t *testing.T) {
 	// project — should fall back to session ID.
 	insertSession(t, d, "s-id", "", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T13:00:00Z")
+		s.StartedAt = new("2024-06-15T13:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID: "s-id", Ordinal: 0,
@@ -1272,13 +1272,13 @@ func TestGetTopSessionsByCost_DedupesByClaudeMessageAndRequestID(
 	// Parent session starts first.
 	insertSession(t, d, "s-parent", "proj", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	// Forked session starts a minute later.
 	insertSession(t, d, "s-fork", "proj", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:01:00Z")
-		s.ParentSessionID = Ptr("s-parent")
+		s.StartedAt = new("2024-06-15T10:01:00Z")
+		s.ParentSessionID = new("s-parent")
 		s.RelationshipType = "fork"
 	})
 
@@ -1374,7 +1374,7 @@ func TestGetTopSessionsByCostLimit(t *testing.T) {
 		sid := "sess-" + strconv.Itoa(i)
 		insertSession(t, d, sid, "proj", func(s *Session) {
 			s.Agent = "claude"
-			s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+			s.StartedAt = new("2024-06-15T10:00:00Z")
 		})
 		insertMessages(t, d, Message{
 			SessionID: sid, Ordinal: 0,
@@ -1403,7 +1403,7 @@ func TestGetUsageSessionCounts(t *testing.T) {
 	// s1: proj-a / claude — TWO messages across TWO days
 	insertSession(t, d, "s1", "proj-a", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	insertMessages(t, d,
 		Message{
@@ -1425,7 +1425,7 @@ func TestGetUsageSessionCounts(t *testing.T) {
 	// s2: proj-a / codex
 	insertSession(t, d, "s2", "proj-a", func(s *Session) {
 		s.Agent = "codex"
-		s.StartedAt = Ptr("2024-06-15T11:00:00Z")
+		s.StartedAt = new("2024-06-15T11:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID: "s2", Ordinal: 0,
@@ -1438,7 +1438,7 @@ func TestGetUsageSessionCounts(t *testing.T) {
 	// s3: proj-b / claude
 	insertSession(t, d, "s3", "proj-b", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T12:00:00Z")
+		s.StartedAt = new("2024-06-15T12:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID: "s3", Ordinal: 0,
@@ -1492,13 +1492,13 @@ func TestGetUsageSessionCounts_DedupesByClaudeMessageAndRequestID(
 	// Parent starts first.
 	insertSession(t, d, "s-parent", "proj", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	// Fork starts a minute later.
 	insertSession(t, d, "s-fork", "proj", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:01:00Z")
-		s.ParentSessionID = Ptr("s-parent")
+		s.StartedAt = new("2024-06-15T10:01:00Z")
+		s.ParentSessionID = new("s-parent")
 		s.RelationshipType = "fork"
 	})
 
@@ -1563,7 +1563,7 @@ func TestUsageQueryEligibilityParity(t *testing.T) {
 	// Good session — should be visible to all queries.
 	insertSession(t, d, "good", "proj", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID: "good", Ordinal: 0,
@@ -1576,7 +1576,7 @@ func TestUsageQueryEligibilityParity(t *testing.T) {
 	// Bad: empty token_usage
 	insertSession(t, d, "bad-empty", "proj", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID: "bad-empty", Ordinal: 0,
@@ -1588,7 +1588,7 @@ func TestUsageQueryEligibilityParity(t *testing.T) {
 	// Bad: synthetic model
 	insertSession(t, d, "bad-synth", "proj", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID: "bad-synth", Ordinal: 0,
@@ -1601,7 +1601,7 @@ func TestUsageQueryEligibilityParity(t *testing.T) {
 	// Bad: soft-deleted session
 	insertSession(t, d, "bad-deleted", "proj", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	insertMessages(t, d, Message{
 		SessionID: "bad-deleted", Ordinal: 0,
@@ -1663,15 +1663,15 @@ func TestExcludeProjectFilter(t *testing.T) {
 
 	insertSession(t, d, "sA", "proj-a", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	insertSession(t, d, "sB", "proj-b", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	insertSession(t, d, "sC", "proj-c", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 
 	usage := `{"input_tokens":1000,"output_tokens":500}`
@@ -1746,11 +1746,11 @@ func TestExcludeAgentFilter(t *testing.T) {
 
 	insertSession(t, d, "s1", "proj", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 	insertSession(t, d, "s2", "proj", func(s *Session) {
 		s.Agent = "codex"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 
 	usage := `{"input_tokens":1000,"output_tokens":500}`
@@ -1790,7 +1790,7 @@ func TestExcludeModelFilter(t *testing.T) {
 
 	insertSession(t, d, "s1", "proj", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+		s.StartedAt = new("2024-06-15T10:00:00Z")
 	})
 
 	insertMessages(t, d,
@@ -1885,7 +1885,7 @@ func BenchmarkGetDailyUsage(b *testing.B) {
 			Machine:      defaultMachine,
 			Agent:        agent,
 			MessageCount: msgsPerSession,
-			StartedAt:    Ptr(startTime.Format(time.RFC3339)),
+			StartedAt:    new(startTime.Format(time.RFC3339)),
 		}
 		if err := d.UpsertSession(s); err != nil {
 			b.Fatalf("UpsertSession: %v", err)
@@ -1938,20 +1938,20 @@ func TestGetDailyUsage_PricingPrecedence(t *testing.T) {
 			wantCost: 1.4, // 1M*$1/M + 100k*$4/M
 		},
 		{
-			name:    "custom overrides db for same model",
-			dbRates: []ModelPricing{{ModelPattern: "acme-ultra-2.1", InputPerMTok: 1.0, OutputPerMTok: 4.0}},
-			custom:  map[string]config.CustomModelRate{"acme-ultra-2.1": {Input: 2.0, Output: 8.0}},
-			model:   "acme-ultra-2.1",
-			input:   1_000_000,
-			output:  100_000,
+			name:     "custom overrides db for same model",
+			dbRates:  []ModelPricing{{ModelPattern: "acme-ultra-2.1", InputPerMTok: 1.0, OutputPerMTok: 4.0}},
+			custom:   map[string]config.CustomModelRate{"acme-ultra-2.1": {Input: 2.0, Output: 8.0}},
+			model:    "acme-ultra-2.1",
+			input:    1_000_000,
+			output:   100_000,
 			wantCost: 2.8, // 1M*$2/M + 100k*$8/M
 		},
 		{
-			name:    "custom for unknown model, no db entry",
-			custom:  map[string]config.CustomModelRate{"my-custom-model": {Input: 1.5, Output: 6.0}},
-			model:   "my-custom-model",
-			input:   500_000,
-			output:  50_000,
+			name:     "custom for unknown model, no db entry",
+			custom:   map[string]config.CustomModelRate{"my-custom-model": {Input: 1.5, Output: 6.0}},
+			model:    "my-custom-model",
+			input:    500_000,
+			output:   50_000,
 			wantCost: 1.05, // 500k*$1.5/M + 50k*$6/M
 		},
 		{
@@ -1962,12 +1962,12 @@ func TestGetDailyUsage_PricingPrecedence(t *testing.T) {
 			wantCost: 0.0,
 		},
 		{
-			name:    "custom only affects targeted model",
-			dbRates: []ModelPricing{{ModelPattern: "db-model", InputPerMTok: 3.0, OutputPerMTok: 10.0}},
-			custom:  map[string]config.CustomModelRate{"other-model": {Input: 99.0, Output: 99.0}},
-			model:   "db-model",
-			input:   1_000_000,
-			output:  100_000,
+			name:     "custom only affects targeted model",
+			dbRates:  []ModelPricing{{ModelPattern: "db-model", InputPerMTok: 3.0, OutputPerMTok: 10.0}},
+			custom:   map[string]config.CustomModelRate{"other-model": {Input: 99.0, Output: 99.0}},
+			model:    "db-model",
+			input:    1_000_000,
+			output:   100_000,
 			wantCost: 4.0, // 1M*$3/M + 100k*$10/M -- db rates, not custom
 		},
 	}
@@ -1983,7 +1983,7 @@ func TestGetDailyUsage_PricingPrecedence(t *testing.T) {
 			}
 
 			insertSession(t, d, "s1", "proj", func(s *Session) {
-				s.StartedAt = Ptr("2024-06-15T10:00:00Z")
+				s.StartedAt = new("2024-06-15T10:00:00Z")
 			})
 			insertMessages(t, d, Message{
 				SessionID:  "s1",

@@ -18,7 +18,7 @@ func TestGradeCell(t *testing.T) {
 		want string
 	}{
 		{"nil grade renders dash", nil, "-"},
-		{"empty grade renders dash", strPtr(""), "-"},
+		{"empty grade renders dash", new(""), "-"},
 		{"grade preserved", &a, "A"},
 	}
 	for _, tc := range tests {
@@ -181,7 +181,7 @@ func TestPrintHealthList(t *testing.T) {
 			Outcome:            "success",
 			HealthGrade:        &a,
 			ContextPressureMax: &pressure,
-			EndedAt:            strPtr("2026-04-15T20:48:24Z"),
+			EndedAt:            new("2026-04-15T20:48:24Z"),
 		},
 		{
 			ID:                 "def67890",
@@ -219,8 +219,8 @@ func TestPrintHealthDetail(t *testing.T) {
 		ID:                     "abc12345",
 		Project:                "agentsview",
 		Agent:                  "claude",
-		StartedAt:              strPtr("2026-04-15T20:48:24Z"),
-		EndedAt:                strPtr("2026-04-15T21:30:00Z"),
+		StartedAt:              new("2026-04-15T20:48:24Z"),
+		EndedAt:                new("2026-04-15T21:30:00Z"),
 		MessageCount:           42,
 		UserMessageCount:       12,
 		HealthGrade:            &a,
@@ -416,8 +416,6 @@ func TestResolveSessionIDCollisionBeyondTopFew(t *testing.T) {
 		t.Errorf("error %q lacks 'ambiguous'", err.Error())
 	}
 }
-
-func strPtr(s string) *string { return &s }
 
 func parseLocalDate(t *testing.T, ts string) string {
 	t.Helper()

@@ -61,8 +61,8 @@ func TestListSessions_OutcomeFilter(t *testing.T) {
 		{"out-4", "completed"},
 	} {
 		insertSession(t, d, tc.id, "proj", func(s *Session) {
-			s.StartedAt = Ptr("2024-06-01T10:00:00Z")
-			s.EndedAt = Ptr("2024-06-01T11:00:00Z")
+			s.StartedAt = new("2024-06-01T10:00:00Z")
+			s.EndedAt = new("2024-06-01T11:00:00Z")
 			s.MessageCount = 5
 			s.UserMessageCount = 3
 		})
@@ -99,14 +99,14 @@ func TestListSessions_HealthGradeFilter(t *testing.T) {
 		{"hg-4", "A", 90},
 	} {
 		insertSession(t, d, tc.id, "proj", func(s *Session) {
-			s.StartedAt = Ptr("2024-06-01T10:00:00Z")
-			s.EndedAt = Ptr("2024-06-01T11:00:00Z")
+			s.StartedAt = new("2024-06-01T10:00:00Z")
+			s.EndedAt = new("2024-06-01T11:00:00Z")
 			s.MessageCount = 5
 			s.UserMessageCount = 3
 		})
 		err := d.UpdateSessionSignals(tc.id, SessionSignalUpdate{
-			HealthGrade: Ptr(tc.grade),
-			HealthScore: Ptr(tc.score),
+			HealthGrade: new(tc.grade),
+			HealthScore: new(tc.score),
 		})
 		if err != nil {
 			t.Fatalf("UpdateSessionSignals %s: %v", tc.id, err)
@@ -134,8 +134,8 @@ func TestListSessions_MinToolFailuresFilter(t *testing.T) {
 		{"tf-3", 7},
 	} {
 		insertSession(t, d, tc.id, "proj", func(s *Session) {
-			s.StartedAt = Ptr("2024-06-01T10:00:00Z")
-			s.EndedAt = Ptr("2024-06-01T11:00:00Z")
+			s.StartedAt = new("2024-06-01T10:00:00Z")
+			s.EndedAt = new("2024-06-01T11:00:00Z")
 			s.MessageCount = 5
 			s.UserMessageCount = 3
 		})
@@ -148,16 +148,16 @@ func TestListSessions_MinToolFailuresFilter(t *testing.T) {
 	}
 
 	requireSessions(t, d, filterWith(func(f *SessionFilter) {
-		f.MinToolFailures = Ptr(3)
+		f.MinToolFailures = new(3)
 	}), []string{"tf-2", "tf-3"})
 
 	requireSessions(t, d, filterWith(func(f *SessionFilter) {
-		f.MinToolFailures = Ptr(5)
+		f.MinToolFailures = new(5)
 	}), []string{"tf-3"})
 
 	// Zero threshold returns all.
 	requireSessions(t, d, filterWith(func(f *SessionFilter) {
-		f.MinToolFailures = Ptr(0)
+		f.MinToolFailures = new(0)
 	}), []string{"tf-1", "tf-2", "tf-3"})
 }
 

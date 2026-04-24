@@ -36,8 +36,8 @@ func sessionSet(t *testing.T, d *DB) {
 		end := fmt.Sprintf("2024-06-0%dT11:00:00Z", i+1)
 		insertSession(t, d, fmt.Sprintf("s%d", i+1),
 			"proj", func(s *Session) {
-				s.StartedAt = Ptr(day)
-				s.EndedAt = Ptr(end)
+				s.StartedAt = new(day)
+				s.EndedAt = new(end)
 				s.MessageCount = mc
 			})
 	}
@@ -127,7 +127,9 @@ func testDB(t *testing.T) *DB {
 }
 
 // Ptr returns a pointer to v.
-func Ptr[T any](v T) *T { return &v }
+//
+//go:fix inline
+func Ptr[T any](v T) *T { return new(v) }
 
 // insertSession creates and upserts a session with sensible
 // defaults. Override any field via the opts functions.
@@ -308,7 +310,7 @@ func TestOpenDataVersionBump_PreservesData(t *testing.T) {
 		Machine:      "local",
 		Agent:        "codex",
 		MessageCount: 1,
-		FileMtime:    Ptr(int64(12345)),
+		FileMtime:    new(int64(12345)),
 	})
 	requireNoError(t, err, "insert session")
 	insertMessages(t, d,
@@ -784,9 +786,9 @@ func TestSessionCRUD(t *testing.T) {
 		Project:      "my_project",
 		Machine:      defaultMachine,
 		Agent:        defaultAgent,
-		FirstMessage: Ptr("Hello world"),
-		StartedAt:    Ptr(tsZero),
-		EndedAt:      Ptr(tsHour1),
+		FirstMessage: new("Hello world"),
+		StartedAt:    new(tsZero),
+		EndedAt:      new(tsHour1),
 		MessageCount: 5,
 	}
 
@@ -822,7 +824,7 @@ func TestSessionParentSessionID(t *testing.T) {
 
 	t.Run("UpsertWithParent", func(t *testing.T) {
 		insertSession(t, d, "child-1", "proj", func(s *Session) {
-			s.ParentSessionID = Ptr("parent-uuid")
+			s.ParentSessionID = new("parent-uuid")
 		})
 
 		got := requireSessionExists(t, d, "child-1")
@@ -889,45 +891,45 @@ func TestGetChildSessions(t *testing.T) {
 
 	// Insert a parent session.
 	insertSession(t, d, "parent-1", "proj", func(s *Session) {
-		s.StartedAt = Ptr("2024-06-01T10:00:00Z")
-		s.EndedAt = Ptr("2024-06-01T11:00:00Z")
+		s.StartedAt = new("2024-06-01T10:00:00Z")
+		s.EndedAt = new("2024-06-01T11:00:00Z")
 		s.MessageCount = 5
 	})
 
 	// Insert child sessions with different relationship types.
 	insertSession(t, d, "child-sub", "proj", func(s *Session) {
-		s.ParentSessionID = Ptr("parent-1")
+		s.ParentSessionID = new("parent-1")
 		s.RelationshipType = "subagent"
-		s.StartedAt = Ptr("2024-06-01T10:05:00Z")
-		s.EndedAt = Ptr("2024-06-01T10:10:00Z")
+		s.StartedAt = new("2024-06-01T10:05:00Z")
+		s.EndedAt = new("2024-06-01T10:10:00Z")
 		s.MessageCount = 3
 	})
 	insertSession(t, d, "child-fork", "proj", func(s *Session) {
-		s.ParentSessionID = Ptr("parent-1")
+		s.ParentSessionID = new("parent-1")
 		s.RelationshipType = "fork"
-		s.StartedAt = Ptr("2024-06-01T10:20:00Z")
-		s.EndedAt = Ptr("2024-06-01T10:30:00Z")
+		s.StartedAt = new("2024-06-01T10:20:00Z")
+		s.EndedAt = new("2024-06-01T10:30:00Z")
 		s.MessageCount = 2
 	})
 	insertSession(t, d, "child-cont", "proj", func(s *Session) {
-		s.ParentSessionID = Ptr("parent-1")
+		s.ParentSessionID = new("parent-1")
 		s.RelationshipType = "continuation"
-		s.StartedAt = Ptr("2024-06-01T10:10:00Z")
-		s.EndedAt = Ptr("2024-06-01T10:15:00Z")
+		s.StartedAt = new("2024-06-01T10:10:00Z")
+		s.EndedAt = new("2024-06-01T10:15:00Z")
 		s.MessageCount = 4
 	})
 	insertSession(t, d, "child-deleted", "proj", func(s *Session) {
-		s.ParentSessionID = Ptr("parent-1")
+		s.ParentSessionID = new("parent-1")
 		s.RelationshipType = "subagent"
-		s.StartedAt = Ptr("2024-06-01T10:07:00Z")
-		s.EndedAt = Ptr("2024-06-01T10:08:00Z")
+		s.StartedAt = new("2024-06-01T10:07:00Z")
+		s.EndedAt = new("2024-06-01T10:08:00Z")
 		s.MessageCount = 1
 	})
 	requireNoError(t, d.SoftDeleteSession("child-deleted"), "SoftDeleteSession")
 
 	// Insert an unrelated session (no parent).
 	insertSession(t, d, "unrelated", "proj", func(s *Session) {
-		s.StartedAt = Ptr("2024-06-01T10:00:00Z")
+		s.StartedAt = new("2024-06-01T10:00:00Z")
 		s.MessageCount = 1
 	})
 
@@ -985,7 +987,7 @@ func TestListSessions(t *testing.T) {
 		insertSession(t, d,
 			fmt.Sprintf("session-%c", 'a'+i), "proj",
 			func(s *Session) {
-				s.EndedAt = Ptr(ea)
+				s.EndedAt = new(ea)
 				s.MessageCount = i + 1
 			},
 		)
@@ -1025,7 +1027,7 @@ func TestListSessionsPaginationNoDuplicates(t *testing.T) {
 	for i, ea := range times {
 		insertSession(t, d,
 			fmt.Sprintf("page-%c", 'a'+i), "proj",
-			func(s *Session) { s.EndedAt = Ptr(ea) },
+			func(s *Session) { s.EndedAt = new(ea) },
 		)
 	}
 
@@ -1066,16 +1068,16 @@ func TestListSessionsPaginationEmptyTimestamps(t *testing.T) {
 	// Empty-string ended_at/started_at should sort by
 	// created_at, same as NULL.
 	insertSession(t, d, "s-normal", "proj", func(s *Session) {
-		s.EndedAt = Ptr("2024-06-01T12:00:00Z")
-		s.StartedAt = Ptr("2024-06-01T10:00:00Z")
+		s.EndedAt = new("2024-06-01T12:00:00Z")
+		s.StartedAt = new("2024-06-01T10:00:00Z")
 	})
 	insertSession(t, d, "s-empty-ended", "proj", func(s *Session) {
-		s.EndedAt = Ptr("")
-		s.StartedAt = Ptr("2024-05-01T10:00:00Z")
+		s.EndedAt = new("")
+		s.StartedAt = new("2024-05-01T10:00:00Z")
 	})
 	insertSession(t, d, "s-both-empty", "proj", func(s *Session) {
-		s.EndedAt = Ptr("")
-		s.StartedAt = Ptr("")
+		s.EndedAt = new("")
+		s.StartedAt = new("")
 	})
 	insertSession(t, d, "s-null-ts", "proj")
 
@@ -1113,7 +1115,7 @@ func TestListSessionsProjectFilter(t *testing.T) {
 		ea := fmt.Sprintf("2024-01-01T00:00:0%dZ", i)
 		insertSession(t, d,
 			fmt.Sprintf("%s-%d", proj, i), proj,
-			func(s *Session) { s.EndedAt = Ptr(ea) },
+			func(s *Session) { s.EndedAt = new(ea) },
 		)
 	}
 
@@ -1127,15 +1129,15 @@ func TestListSessionsMachineMultiSelect(t *testing.T) {
 
 	insertSession(t, d, "s-local", "proj", func(s *Session) {
 		s.Machine = "local"
-		s.EndedAt = Ptr("2024-01-01T00:00:00Z")
+		s.EndedAt = new("2024-01-01T00:00:00Z")
 	})
 	insertSession(t, d, "s-remote", "proj", func(s *Session) {
 		s.Machine = "remote"
-		s.EndedAt = Ptr("2024-01-01T00:00:01Z")
+		s.EndedAt = new("2024-01-01T00:00:01Z")
 	})
 	insertSession(t, d, "s-other", "proj", func(s *Session) {
 		s.Machine = "other"
-		s.EndedAt = Ptr("2024-01-01T00:00:02Z")
+		s.EndedAt = new("2024-01-01T00:00:02Z")
 	})
 
 	page, err := d.ListSessions(
@@ -1771,7 +1773,7 @@ func TestStatsEarliestFallsBackToCreatedAt(t *testing.T) {
 	// Session with empty-string started_at — NULLIF should
 	// treat it the same as NULL.
 	insertSession(t, d, "s-empty-start", "proj", func(s *Session) {
-		s.StartedAt = Ptr("")
+		s.StartedAt = new("")
 	})
 	insertMessages(t, d, userMsg("s-empty-start", 0, "hey"))
 
@@ -1837,8 +1839,8 @@ func setupPruneData(t *testing.T, d *DB) {
 	t.Helper()
 	// s1: 2 user messages
 	insertSession(t, d, "s1", "spicytakes", func(s *Session) {
-		s.FirstMessage = Ptr("You are a code reviewer")
-		s.EndedAt = Ptr("2024-01-15T00:00:00Z")
+		s.FirstMessage = new("You are a code reviewer")
+		s.EndedAt = new("2024-01-15T00:00:00Z")
 		s.MessageCount = 2
 	})
 	b1 := &msgBuilder{id: "s1"}
@@ -1847,8 +1849,8 @@ func setupPruneData(t *testing.T, d *DB) {
 	insertMessages(t, d, b1.msgs...)
 	// s2: 2 user messages
 	insertSession(t, d, "s2", "spicytakes", func(s *Session) {
-		s.FirstMessage = Ptr("Analyze this blog post")
-		s.EndedAt = Ptr("2024-03-01T00:00:00Z")
+		s.FirstMessage = new("Analyze this blog post")
+		s.EndedAt = new("2024-03-01T00:00:00Z")
 		s.MessageCount = 2
 	})
 	b2 := &msgBuilder{id: "s2"}
@@ -1857,8 +1859,8 @@ func setupPruneData(t *testing.T, d *DB) {
 	insertMessages(t, d, b2.msgs...)
 	// s3: 2 user messages
 	insertSession(t, d, "s3", "roborev", func(s *Session) {
-		s.FirstMessage = Ptr("You are a code reviewer")
-		s.EndedAt = Ptr("2024-03-01T00:00:00Z")
+		s.FirstMessage = new("You are a code reviewer")
+		s.EndedAt = new("2024-03-01T00:00:00Z")
 		s.MessageCount = 2
 	})
 	b3 := &msgBuilder{id: "s3"}
@@ -1867,8 +1869,8 @@ func setupPruneData(t *testing.T, d *DB) {
 	insertMessages(t, d, b3.msgs...)
 	// s4: 5 user messages + 5 assistant messages = 10 total
 	insertSession(t, d, "s4", "spicytakes", func(s *Session) {
-		s.FirstMessage = Ptr("Help me refactor")
-		s.EndedAt = Ptr("2024-06-01T00:00:00Z")
+		s.FirstMessage = new("Help me refactor")
+		s.EndedAt = new("2024-06-01T00:00:00Z")
 		s.MessageCount = 10
 	})
 	b4 := &msgBuilder{id: "s4"}
@@ -1901,7 +1903,7 @@ func TestFindPruneCandidates(t *testing.T) {
 		},
 		{
 			name:   "MaxMessages",
-			filter: PruneFilter{MaxMessages: Ptr(2)},
+			filter: PruneFilter{MaxMessages: new(2)},
 			want:   []string{"s1", "s2", "s3"},
 		},
 		{
@@ -1921,7 +1923,7 @@ func TestFindPruneCandidates(t *testing.T) {
 		{
 			name: "CombinedProjectAndMaxMessages",
 			filter: PruneFilter{
-				Project: "spicytakes", MaxMessages: Ptr(2),
+				Project: "spicytakes", MaxMessages: new(2),
 			},
 			want: []string{"s1", "s2"},
 		},
@@ -1929,7 +1931,7 @@ func TestFindPruneCandidates(t *testing.T) {
 			name: "AllFiltersNoMatch",
 			filter: PruneFilter{
 				Project:      "spicytakes",
-				MaxMessages:  Ptr(2),
+				MaxMessages:  new(2),
 				Before:       "2024-02-01",
 				FirstMessage: "Analyze",
 			},
@@ -1975,8 +1977,8 @@ func TestFindPruneCandidates(t *testing.T) {
 	t.Run("ReturnsFileMetadata", func(t *testing.T) {
 		fp := "/path/to/file.jsonl"
 		insertSession(t, d, "s5", "test", func(s *Session) {
-			s.FilePath = Ptr(fp)
-			s.FileSize = Ptr(int64(4096))
+			s.FilePath = new(fp)
+			s.FileSize = new(int64(4096))
 		})
 		got, err := d.FindPruneCandidates(PruneFilter{
 			Project: "test",
@@ -2008,18 +2010,18 @@ func TestFindPruneCandidatesExcludesParents(t *testing.T) {
 
 	// Create a parent -> child chain.
 	insertSession(t, d, "parent1", "proj", func(s *Session) {
-		s.StartedAt = Ptr("2024-06-01T10:00:00Z")
-		s.EndedAt = Ptr("2024-06-01T11:00:00Z")
+		s.StartedAt = new("2024-06-01T10:00:00Z")
+		s.EndedAt = new("2024-06-01T11:00:00Z")
 	})
 	insertSession(t, d, "child1", "proj", func(s *Session) {
-		s.ParentSessionID = Ptr("parent1")
-		s.StartedAt = Ptr("2024-06-01T12:00:00Z")
-		s.EndedAt = Ptr("2024-06-01T13:00:00Z")
+		s.ParentSessionID = new("parent1")
+		s.StartedAt = new("2024-06-01T12:00:00Z")
+		s.EndedAt = new("2024-06-01T13:00:00Z")
 	})
 	// A standalone session with no children.
 	insertSession(t, d, "standalone", "proj", func(s *Session) {
-		s.StartedAt = Ptr("2024-06-01T14:00:00Z")
-		s.EndedAt = Ptr("2024-06-01T15:00:00Z")
+		s.StartedAt = new("2024-06-01T14:00:00Z")
+		s.EndedAt = new("2024-06-01T15:00:00Z")
 	})
 
 	got, err := d.FindPruneCandidates(PruneFilter{
@@ -2046,14 +2048,14 @@ func TestFindPruneCandidatesLikeEscaping(t *testing.T) {
 	d := testDB(t)
 
 	insertSession(t, d, "e1", "my%project", func(s *Session) {
-		s.FirstMessage = Ptr("100% complete")
+		s.FirstMessage = new("100% complete")
 	})
 	insertSession(t, d, "e2", "my_project", func(s *Session) {
-		s.FirstMessage = Ptr("100% complete")
+		s.FirstMessage = new("100% complete")
 	})
 	insertSession(t, d, "e3", "myXproject")
 	insertSession(t, d, "e4", `my\project`, func(s *Session) {
-		s.FirstMessage = Ptr(`path\to\file`)
+		s.FirstMessage = new(`path\to\file`)
 	})
 
 	tests := []struct {
@@ -2144,7 +2146,7 @@ func TestFindPruneCandidatesMaxMessagesSentinel(t *testing.T) {
 	}{
 		{
 			name:   "ZeroMatchesOnlyZero",
-			filter: PruneFilter{MaxMessages: Ptr(0)},
+			filter: PruneFilter{MaxMessages: new(0)},
 			want:   1,
 		},
 		{
@@ -2167,7 +2169,7 @@ func TestFindPruneCandidatesMaxMessagesSentinel(t *testing.T) {
 	}
 
 	// Additional check: MaxMessages=0 returns m1 specifically.
-	got, err := d.FindPruneCandidates(PruneFilter{MaxMessages: Ptr(0)})
+	got, err := d.FindPruneCandidates(PruneFilter{MaxMessages: new(0)})
 	requireNoError(t, err, "FindPruneCandidates MaxMessages=0")
 	if len(got) != 1 {
 		t.Fatalf("MaxMessages 0: got %d results, want 1", len(got))
@@ -2193,7 +2195,7 @@ func TestFindPruneCandidatesIgnoresSystemMessages(t *testing.T) {
 
 	// MaxMessages=1 should include zen1 (1 real user msg).
 	got, err := d.FindPruneCandidates(
-		PruneFilter{MaxMessages: Ptr(1)},
+		PruneFilter{MaxMessages: new(1)},
 	)
 	requireNoError(t, err, "FindPruneCandidates")
 	if len(got) != 1 {
@@ -2206,7 +2208,7 @@ func TestFindPruneCandidatesIgnoresSystemMessages(t *testing.T) {
 	// MaxMessages=0 should NOT include zen1 (it has 1 real
 	// user message).
 	got, err = d.FindPruneCandidates(
-		PruneFilter{MaxMessages: Ptr(0)},
+		PruneFilter{MaxMessages: new(0)},
 	)
 	requireNoError(t, err, "FindPruneCandidates")
 	if len(got) != 0 {
@@ -2307,9 +2309,9 @@ func TestSessionFileInfo(t *testing.T) {
 	d := testDB(t)
 
 	insertSession(t, d, "s1", "p", func(s *Session) {
-		s.FileSize = Ptr(int64(1024))
-		s.FileMtime = Ptr(int64(1700000000))
-		s.FileHash = Ptr("abc123def456")
+		s.FileSize = new(int64(1024))
+		s.FileMtime = new(int64(1700000000))
+		s.FileHash = new("abc123def456")
 	})
 
 	gotSize, gotMtime, ok := d.GetSessionFileInfo("s1")
@@ -2335,14 +2337,14 @@ func TestGetSessionFull(t *testing.T) {
 
 	t.Run("AllMetadata", func(t *testing.T) {
 		insertSession(t, d, "full-1", "proj", func(s *Session) {
-			s.FirstMessage = Ptr("hello")
-			s.StartedAt = Ptr(tsZero)
-			s.EndedAt = Ptr(tsHour1)
+			s.FirstMessage = new("hello")
+			s.StartedAt = new(tsZero)
+			s.EndedAt = new(tsHour1)
 			s.MessageCount = 5
-			s.FilePath = Ptr("/tmp/session.jsonl")
-			s.FileSize = Ptr(int64(2048))
-			s.FileMtime = Ptr(int64(1700000000))
-			s.FileHash = Ptr("abc123")
+			s.FilePath = new("/tmp/session.jsonl")
+			s.FileSize = new(int64(2048))
+			s.FileMtime = new(int64(1700000000))
+			s.FileHash = new("abc123")
 		})
 
 		got, err := d.GetSessionFull(ctx, "full-1")
@@ -2355,13 +2357,13 @@ func TestGetSessionFull(t *testing.T) {
 			ID:                "full-1",
 			Project:           "proj",
 			MessageCount:      5,
-			FilePath:          Ptr("/tmp/session.jsonl"),
-			FileSize:          Ptr(int64(2048)),
-			FileMtime:         Ptr(int64(1700000000)),
-			FileHash:          Ptr("abc123"),
-			FirstMessage:      Ptr("hello"),
-			StartedAt:         Ptr(tsZero),
-			EndedAt:           Ptr(tsHour1),
+			FilePath:          new("/tmp/session.jsonl"),
+			FileSize:          new(int64(2048)),
+			FileMtime:         new(int64(1700000000)),
+			FileHash:          new("abc123"),
+			FirstMessage:      new("hello"),
+			StartedAt:         new(tsZero),
+			EndedAt:           new(tsHour1),
 			Machine:           defaultMachine,
 			Agent:             defaultAgent,
 			Outcome:           "unknown",
@@ -5287,18 +5289,18 @@ func TestGetSessionForIncremental(t *testing.T) {
 		Project:              "my-project",
 		Machine:              "test",
 		Agent:                "codex",
-		FirstMessage:         Ptr("hello world"),
-		StartedAt:            Ptr("2024-01-15T10:00:00Z"),
-		EndedAt:              Ptr("2024-01-15T10:30:00Z"),
+		FirstMessage:         new("hello world"),
+		StartedAt:            new("2024-01-15T10:00:00Z"),
+		EndedAt:              new("2024-01-15T10:30:00Z"),
 		MessageCount:         5,
 		UserMessageCount:     2,
 		TotalOutputTokens:    500,
 		PeakContextTokens:    1500,
 		HasTotalOutputTokens: true,
 		HasPeakContextTokens: true,
-		FilePath:             Ptr("/tmp/sessions/test.jsonl"),
-		FileSize:             Ptr(int64(4096)),
-		FileMtime:            Ptr(int64(999)),
+		FilePath:             new("/tmp/sessions/test.jsonl"),
+		FileSize:             new(int64(4096)),
+		FileMtime:            new(int64(999)),
 	}
 	requireNoError(t, d.UpsertSession(s), "upsert")
 
@@ -5353,8 +5355,8 @@ func TestGetSessionForIncremental(t *testing.T) {
 			requireNoError(t, d.UpsertSession(Session{
 				ID:       id,
 				Agent:    "claude",
-				FilePath: Ptr(path),
-				FileSize: Ptr(int64(8192)),
+				FilePath: new(path),
+				FileSize: new(int64(8192)),
 			}), "upsert "+id)
 		}
 		_, ok := d.GetSessionForIncremental(path)
@@ -5422,16 +5424,16 @@ func TestUpdateSessionIncremental(t *testing.T) {
 		Project:              "my-project",
 		Machine:              "test",
 		Agent:                "codex",
-		FirstMessage:         Ptr("hello"),
-		StartedAt:            Ptr("2024-01-15T10:00:00Z"),
+		FirstMessage:         new("hello"),
+		StartedAt:            new("2024-01-15T10:00:00Z"),
 		MessageCount:         3,
 		UserMessageCount:     1,
-		ParentSessionID:      Ptr("parent-1"),
+		ParentSessionID:      new("parent-1"),
 		RelationshipType:     "continuation",
-		FilePath:             Ptr("/tmp/sessions/update.jsonl"),
-		FileSize:             Ptr(int64(1024)),
-		FileMtime:            Ptr(int64(100)),
-		FileHash:             Ptr("abc123"),
+		FilePath:             new("/tmp/sessions/update.jsonl"),
+		FileSize:             new(int64(1024)),
+		FileMtime:            new(int64(100)),
+		FileHash:             new("abc123"),
 		TotalOutputTokens:    300,
 		PeakContextTokens:    1200,
 		HasTotalOutputTokens: true,

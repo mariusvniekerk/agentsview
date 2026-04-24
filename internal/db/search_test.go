@@ -14,26 +14,26 @@ func TestSearch(t *testing.T) {
 	insertSession(t, d, "s1", "proj-a",
 		func(s *Session) {
 			s.Agent = "claude"
-			s.FirstMessage = Ptr("alpha beta gamma")
-			s.StartedAt = Ptr("2024-01-01T10:00:00Z")
-			s.EndedAt = Ptr("2024-01-01T11:00:00Z")
+			s.FirstMessage = new("alpha beta gamma")
+			s.StartedAt = new("2024-01-01T10:00:00Z")
+			s.EndedAt = new("2024-01-01T11:00:00Z")
 		},
 	)
 	// Session s2: newer ended_at, agent "codex"
 	insertSession(t, d, "s2", "proj-b",
 		func(s *Session) {
 			s.Agent = "codex"
-			s.FirstMessage = Ptr("alpha delta epsilon")
-			s.StartedAt = Ptr("2024-01-02T10:00:00Z")
-			s.EndedAt = Ptr("2024-01-02T11:00:00Z")
+			s.FirstMessage = new("alpha delta epsilon")
+			s.StartedAt = new("2024-01-02T10:00:00Z")
+			s.EndedAt = new("2024-01-02T11:00:00Z")
 		},
 	)
 	// Session s3: system messages only — should be excluded
 	insertSession(t, d, "s3", "proj-c",
 		func(s *Session) {
 			s.Agent = "claude"
-			s.StartedAt = Ptr("2024-01-03T10:00:00Z")
-			s.EndedAt = Ptr("2024-01-03T11:00:00Z")
+			s.StartedAt = new("2024-01-03T10:00:00Z")
+			s.EndedAt = new("2024-01-03T11:00:00Z")
 		},
 	)
 
@@ -55,10 +55,10 @@ func TestSearch(t *testing.T) {
 	insertSession(t, d, "s-sysonly-dn", "proj-sysonly",
 		func(s *Session) {
 			s.Agent = "claude"
-			s.DisplayName = Ptr("sysonlydnterm unique display")
-			s.FirstMessage = Ptr("no match here")
-			s.StartedAt = Ptr("2024-01-04T10:00:00Z")
-			s.EndedAt = Ptr("2024-01-04T11:00:00Z")
+			s.DisplayName = new("sysonlydnterm unique display")
+			s.FirstMessage = new("no match here")
+			s.StartedAt = new("2024-01-04T10:00:00Z")
+			s.EndedAt = new("2024-01-04T11:00:00Z")
 		},
 	)
 	sysonlyDN := userMsg("s-sysonly-dn", 0, "irrelevant content")
@@ -69,9 +69,9 @@ func TestSearch(t *testing.T) {
 	insertSession(t, d, "s-sysonly-fm", "proj-sysonly",
 		func(s *Session) {
 			s.Agent = "claude"
-			s.FirstMessage = Ptr("sysonlyfmterm unique first")
-			s.StartedAt = Ptr("2024-01-05T10:00:00Z")
-			s.EndedAt = Ptr("2024-01-05T11:00:00Z")
+			s.FirstMessage = new("sysonlyfmterm unique first")
+			s.StartedAt = new("2024-01-05T10:00:00Z")
+			s.EndedAt = new("2024-01-05T11:00:00Z")
 		},
 	)
 	sysonlyFM := userMsg("s-sysonly-fm", 0, "irrelevant content")
@@ -83,9 +83,9 @@ func TestSearch(t *testing.T) {
 	insertSession(t, d, "s-prefixonly", "proj-prefixonly",
 		func(s *Session) {
 			s.Agent = "claude"
-			s.DisplayName = Ptr("prefixonlydnterm unique display")
-			s.StartedAt = Ptr("2024-01-06T10:00:00Z")
-			s.EndedAt = Ptr("2024-01-06T11:00:00Z")
+			s.DisplayName = new("prefixonlydnterm unique display")
+			s.StartedAt = new("2024-01-06T10:00:00Z")
+			s.EndedAt = new("2024-01-06T11:00:00Z")
 		},
 	)
 	insertMessages(t, d, userMsg("s-prefixonly", 0,
@@ -245,9 +245,9 @@ func TestSearch(t *testing.T) {
 		// The name branch must strip those quotes before LIKE matching.
 		insertSession(t, d, "s6", "proj-f", func(s *Session) {
 			s.Agent = "claude"
-			s.StartedAt = Ptr("2024-01-06T10:00:00Z")
+			s.StartedAt = new("2024-01-06T10:00:00Z")
 		})
-		if err := d.RenameSession("s6", Ptr("unique phrase session")); err != nil {
+		if err := d.RenameSession("s6", new("unique phrase session")); err != nil {
 			t.Fatalf("RenameSession: %v", err)
 		}
 		insertMessages(t, d, userMsg("s6", 0, "no match here"))
@@ -274,9 +274,9 @@ func TestSearch(t *testing.T) {
 		// s4: display_name contains "uniquename", no messages match
 		insertSession(t, d, "s4", "proj-d", func(s *Session) {
 			s.Agent = "claude"
-			s.StartedAt = Ptr("2024-01-04T10:00:00Z")
+			s.StartedAt = new("2024-01-04T10:00:00Z")
 		})
-		if err := d.RenameSession("s4", Ptr("my uniquename session")); err != nil {
+		if err := d.RenameSession("s4", new("my uniquename session")); err != nil {
 			t.Fatalf("RenameSession: %v", err)
 		}
 		// message that does NOT contain "uniquename"
@@ -321,10 +321,10 @@ func TestSearch(t *testing.T) {
 		// s7: display_name is set to something else; only first_message matches
 		insertSession(t, d, "s7", "proj-g", func(s *Session) {
 			s.Agent = "claude"
-			s.FirstMessage = Ptr("firstmsgonlyterm present here")
-			s.StartedAt = Ptr("2024-01-07T10:00:00Z")
+			s.FirstMessage = new("firstmsgonlyterm present here")
+			s.StartedAt = new("2024-01-07T10:00:00Z")
 		})
-		if err := d.RenameSession("s7", Ptr("unrelated display name")); err != nil {
+		if err := d.RenameSession("s7", new("unrelated display name")); err != nil {
 			t.Fatalf("RenameSession: %v", err)
 		}
 		// message that does NOT contain the search term
@@ -356,9 +356,9 @@ func TestSearch(t *testing.T) {
 		// s5: display_name AND message content both contain "doublehit"
 		insertSession(t, d, "s5", "proj-e", func(s *Session) {
 			s.Agent = "claude"
-			s.StartedAt = Ptr("2024-01-05T10:00:00Z")
+			s.StartedAt = new("2024-01-05T10:00:00Z")
 		})
-		if err := d.RenameSession("s5", Ptr("doublehit session")); err != nil {
+		if err := d.RenameSession("s5", new("doublehit session")); err != nil {
 			t.Fatalf("RenameSession: %v", err)
 		}
 		insertMessages(t, d, userMsg("s5", 0, "doublehit in message too"))
@@ -418,8 +418,8 @@ func TestSearchDeduplicationManyMessages(t *testing.T) {
 
 	insertSession(t, d, "s1", "proj", func(s *Session) {
 		s.Agent = "claude"
-		s.StartedAt = Ptr("2024-01-01T10:00:00Z")
-		s.EndedAt = Ptr("2024-01-01T11:00:00Z")
+		s.StartedAt = new("2024-01-01T10:00:00Z")
+		s.EndedAt = new("2024-01-01T11:00:00Z")
 	})
 
 	// Insert enough messages to force multiple FTS5 internal segments.
@@ -715,8 +715,8 @@ func TestSearchPaginationStability(t *testing.T) {
 	for _, id := range []string{"stab-a", "stab-b", "stab-c"} {
 		insertSession(t, d, id, "proj-stab", func(s *Session) {
 			s.Agent = "claude"
-			s.StartedAt = Ptr("2024-06-01T12:00:00Z")
-			s.EndedAt = Ptr("2024-06-01T13:00:00Z")
+			s.StartedAt = new("2024-06-01T12:00:00Z")
+			s.EndedAt = new("2024-06-01T13:00:00Z")
 		})
 		insertMessages(t, d, userMsg(id, 0, "stability test keyword"))
 	}

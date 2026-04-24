@@ -5,10 +5,6 @@ import (
 	"time"
 )
 
-func ptr(s string) *string {
-	return &s
-}
-
 func TestPtr(t *testing.T) {
 	tests := []struct {
 		name string
@@ -23,12 +19,12 @@ func TestPtr(t *testing.T) {
 		{
 			name: "non-zero returns RFC3339Nano UTC",
 			in:   time.Date(2024, 6, 15, 12, 30, 45, 123000000, time.UTC),
-			want: ptr("2024-06-15T12:30:45.123Z"),
+			want: new("2024-06-15T12:30:45.123Z"),
 		},
 		{
 			name: "converts to UTC",
 			in:   time.Date(2024, 6, 15, 7, 30, 0, 0, time.FixedZone("EST", -5*60*60)),
-			want: ptr("2024-06-15T12:30:00Z"),
+			want: new("2024-06-15T12:30:00Z"),
 		},
 	}
 
