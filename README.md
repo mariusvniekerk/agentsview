@@ -173,6 +173,8 @@ make install        # install to ~/.local/bin
 ```bash
 make test           # Go tests (CGO_ENABLED=1 -tags fts5)
 make lint           # golangci-lint + NilAway
+make nilaway-golangci # NilAway through custom golangci-lint
+make nilaway-perf   # compare standalone vs golangci-lint NilAway runtime
 make e2e            # Playwright E2E tests
 ```
 

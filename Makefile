@@ -10,9 +10,10 @@ LDFLAGS := -X main.version=$(VERSION) \
 
 LDFLAGS_RELEASE := $(LDFLAGS) -s -w
 DESKTOP_DIST_DIR := dist/desktop
-GOLANGCI_LINT_VERSION ?= v2.10.1
+GOLANGCI_LINT_VERSION ?= v2.11.4
 NILAWAY_VERSION ?= v0.0.0-20260318203545-ad240b12fb4c
 NILAWAY_INCLUDE_PKGS := github.com/wesm/agentsview
+CUSTOM_GCL := ./custom-gcl
 
 GOPATH_FIRST := $(shell go env GOPATH | cut -d: -f1)
 AIR_BIN := $(shell if command -v air >/dev/null 2>&1; then command -v air; \
@@ -20,7 +21,7 @@ AIR_BIN := $(shell if command -v air >/dev/null 2>&1; then command -v air; \
 	elif [ -x "$(GOPATH_FIRST)/bin/air" ]; then printf "%s" "$(GOPATH_FIRST)/bin/air"; \
 	fi)
 
-.PHONY: build build-release install frontend frontend-dev dev check-air air-install desktop-dev desktop-build desktop-macos-app desktop-macos-dmg desktop-windows-installer desktop-linux-appimage desktop-app test test-short test-postgres test-postgres-ci postgres-up postgres-down test-ssh test-ssh-ci ssh-up ssh-down e2e vet lint lint-ci lint-golangci lint-golangci-ci nilaway lint-tools tidy clean release release-darwin-arm64 release-darwin-amd64 release-linux-amd64 install-hooks ensure-embed-dir dev-snapshot help
+.PHONY: build build-release install frontend frontend-dev dev check-air air-install desktop-dev desktop-build desktop-macos-app desktop-macos-dmg desktop-windows-installer desktop-linux-appimage desktop-app test test-short test-postgres test-postgres-ci postgres-up postgres-down test-ssh test-ssh-ci ssh-up ssh-down e2e vet lint lint-ci lint-golangci lint-golangci-ci nilaway nilaway-golangci-build nilaway-golangci nilaway-perf lint-tools tidy clean release release-darwin-arm64 release-darwin-amd64 release-linux-amd64 install-hooks ensure-embed-dir dev-snapshot help
 
 # Ensure go:embed has at least one file (no-op if frontend is built)
 ensure-embed-dir:
@@ -300,6 +301,24 @@ nilaway: ensure-embed-dir
 	fi
 	nilaway -test=false -include-pkgs="$(NILAWAY_INCLUDE_PKGS)" ./...
 
+# Build a custom golangci-lint binary with the NilAway module plugin.
+nilaway-golangci-build:
+	@if ! command -v golangci-lint >/dev/null 2>&1; then \
+		echo "golangci-lint not found. Install with: make lint-tools" >&2; \
+		exit 1; \
+	fi
+	golangci-lint custom --version "$(GOLANGCI_LINT_VERSION)" --name custom-gcl
+
+# Run NilAway through the custom golangci-lint module plugin.
+nilaway-golangci: ensure-embed-dir nilaway-golangci-build
+	$(CUSTOM_GCL) run --config .golangci.nilaway.yml ./...
+
+# Compare standalone NilAway with the golangci-lint module plugin.
+nilaway-perf: ensure-embed-dir nilaway-golangci-build
+	NILAWAY_INCLUDE_PKGS="$(NILAWAY_INCLUDE_PKGS)" \
+		CUSTOM_GCL="$(CUSTOM_GCL)" \
+		scripts/nilaway-performance.sh
+
 # Install pinned local lint tools.
 lint-tools:
 	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
@@ -387,6 +406,8 @@ help:
 	@echo "  lint-ci        - Run golangci-lint and NilAway (no fix, for CI)"
 	@echo "  lint-golangci  - Run golangci-lint with auto-fix"
 	@echo "  nilaway        - Run NilAway"
+	@echo "  nilaway-golangci - Run NilAway through custom golangci-lint"
+	@echo "  nilaway-perf   - Compare standalone and golangci-lint NilAway runtime"
 	@echo "  lint-tools     - Install pinned lint tools"
 	@echo "  tidy           - Tidy go.mod"
 	@echo ""

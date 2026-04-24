@@ -2,6 +2,7 @@
 /agentsview
 /agentsview.exe
 /agentsv
+/custom-gcl
 /testfixture
 *.test.exe
 
