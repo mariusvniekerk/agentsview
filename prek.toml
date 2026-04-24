@@ -15,8 +15,10 @@ always_run = true
 id = "nilaway"
 name = "NilAway"
 language = "system"
-entry = "scripts/nilaway-changed-packages.sh"
+entry = "make nilaway"
 types = ["go"]
+pass_filenames = false
+always_run = true
 
 [[repos.hooks]]
 id = "mdformat"
