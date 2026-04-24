@@ -4,8 +4,8 @@ minimum_prek_version = "0.3.6"
 repo = "local"
 
 [[repos.hooks]]
-id = "golangci-lint"
-name = "golangci-lint"
+id = "go-lint"
+name = "Go lint"
 language = "system"
 entry = "make lint"
 pass_filenames = false

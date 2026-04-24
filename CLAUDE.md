@@ -96,7 +96,7 @@ committing:
 make test       # Go tests (CGO_ENABLED=1 -tags fts5)
 make test-short # Fast tests only (-short flag)
 make e2e        # Playwright E2E tests
-make lint       # golangci-lint
+make lint       # golangci-lint + NilAway
 make vet        # go vet
 ```
 
