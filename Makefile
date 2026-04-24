@@ -292,18 +292,21 @@ lint-golangci-ci: ensure-embed-dir
 	golangci-lint run ./...
 
 # Build a custom golangci-lint binary with the NilAway module plugin.
-# Unset GIT_* and clear GOFLAGS' VCS stamping so the inner `git clone`
-# and `go build` don't inherit the parent repo's git state. When
-# `make nilaway` runs from a pre-commit hook, git exports GIT_DIR and
-# GIT_INDEX_FILE pointing at the parent repo, which confuses both the
-# clone and the subsequent VCS-stamped build (exit 128).
+# Strip every repo-local Git env var (GIT_DIR, GIT_INDEX_FILE,
+# GIT_CONFIG_PARAMETERS, etc.) and disable VCS stamping so the inner
+# `git clone` and `go build` don't inherit the parent repo's state.
+# When `make nilaway` runs from a pre-commit hook, git exports those
+# vars pointing at the parent repo, which makes the clone and the
+# VCS-stamped build fail with exit 128. The list comes from
+# `git rev-parse --local-env-vars` so it tracks whatever Git considers
+# repo-local at runtime.
 nilaway-golangci-build:
 	@if ! command -v golangci-lint >/dev/null 2>&1; then \
 		echo "golangci-lint not found. Install with: make lint-tools" >&2; \
 		exit 1; \
 	fi
-	env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE -u GIT_PREFIX \
-		GOFLAGS=-buildvcs=false \
+	@unset_args=$$(git rev-parse --local-env-vars 2>/dev/null | sed 's/^/-u /' | tr '\n' ' '); \
+	env $$unset_args GOFLAGS=-buildvcs=false \
 		golangci-lint custom --version "$(GOLANGCI_LINT_VERSION)" --name custom-gcl
 
 # Run NilAway through the custom golangci-lint module plugin.
