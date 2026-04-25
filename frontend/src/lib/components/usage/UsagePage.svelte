@@ -10,6 +10,7 @@
   import AttributionPanel from "./AttributionPanel.svelte";
   import TopSessionsTable from "./TopSessionsTable.svelte";
   import CacheEfficiencyPanel from "./CacheEfficiencyPanel.svelte";
+  import DateRangeSelector from "../shared/DateRangeSelector.svelte";
   import FilterDropdown from "./FilterDropdown.svelte";
 
   const REFRESH_MS = 5 * 60 * 1000;
@@ -144,20 +145,6 @@
     });
   });
 
-  function handleFromChange(
-    e: Event & { currentTarget: HTMLInputElement },
-  ) {
-    const val = e.currentTarget.value;
-    if (val) usage.setDateRange(val, usage.to);
-  }
-
-  function handleToChange(
-    e: Event & { currentTarget: HTMLInputElement },
-  ) {
-    const val = e.currentTarget.value;
-    if (val) usage.setDateRange(usage.from, val);
-  }
-
   onMount(() => {
     usage.fetchAll();
     refreshTimer = setInterval(
@@ -182,18 +169,10 @@
     <h2 class="page-title">Usage</h2>
 
     <div class="toolbar-controls">
-      <input
-        type="date"
-        class="date-input"
-        value={usage.from}
-        onchange={handleFromChange}
-      />
-      <span class="date-sep">to</span>
-      <input
-        type="date"
-        class="date-input"
-        value={usage.to}
-        onchange={handleToChange}
+      <DateRangeSelector
+        from={usage.from}
+        to={usage.to}
+        onChange={(from, to) => usage.setDateRange(from, to)}
       />
 
       <FilterDropdown
@@ -304,22 +283,6 @@
     gap: 8px;
     flex-wrap: wrap;
     flex: 1;
-  }
-
-  .date-input {
-    height: 26px;
-    padding: 0 6px;
-    border: 1px solid var(--border-muted);
-    border-radius: var(--radius-sm);
-    background: var(--bg-inset);
-    color: var(--text-primary);
-    font-size: 11px;
-    font-family: var(--font-mono);
-  }
-
-  .date-sep {
-    font-size: 11px;
-    color: var(--text-muted);
   }
 
   .clear-filters {

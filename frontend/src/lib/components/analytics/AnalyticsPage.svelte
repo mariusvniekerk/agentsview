@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy, untrack } from "svelte";
-  import DateRangePicker from "./DateRangePicker.svelte";
+  import DateRangeSelector from "../shared/DateRangeSelector.svelte";
   import SummaryCards from "./SummaryCards.svelte";
   import Heatmap from "./Heatmap.svelte";
   import ActivityTimeline from "./ActivityTimeline.svelte";
@@ -130,7 +130,11 @@
 
 <div class="analytics-page">
   <div class="analytics-toolbar">
-    <DateRangePicker />
+    <DateRangeSelector
+      from={analytics.from}
+      to={analytics.to}
+      onChange={(from, to) => analytics.setDateRange(from, to)}
+    />
     <button
       class="refresh-btn"
       onclick={() => analytics.fetchAll()}
