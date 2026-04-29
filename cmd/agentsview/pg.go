@@ -102,6 +102,8 @@ func runPGPush(cfg PGPushConfig) {
 	didResync := runLocalSync(appCfg, database, cfg.Full)
 	forceFull := cfg.Full || didResync
 
+	fmt.Println("Connecting to PostgreSQL...")
+	connectStart := time.Now()
 	ps, err := postgres.New(
 		pgCfg.URL, pgCfg.Schema, database,
 		pgCfg.MachineName, pgCfg.AllowInsecure,
@@ -114,15 +116,26 @@ func runPGPush(cfg PGPushConfig) {
 		fatal("pg push: %v", err)
 	}
 	defer ps.Close()
+	fmt.Printf(
+		"Connected to PostgreSQL in %s\n",
+		time.Since(connectStart).Round(time.Millisecond),
+	)
 
 	ctx, stop := signal.NotifyContext(
 		context.Background(), os.Interrupt,
 	)
 	defer stop()
 
+	fmt.Println("Preparing PostgreSQL schema...")
+	schemaStart := time.Now()
 	if err := ps.EnsureSchema(ctx); err != nil {
 		fatal("pg push schema: %v", err)
 	}
+	fmt.Printf(
+		"PostgreSQL schema ready in %s\n",
+		time.Since(schemaStart).Round(time.Millisecond),
+	)
+	fmt.Println("Starting PostgreSQL push...")
 	result, err := ps.Push(ctx, forceFull,
 		func(p postgres.PushProgress) {
 			fmt.Printf(

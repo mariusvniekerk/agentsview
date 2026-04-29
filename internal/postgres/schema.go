@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/wesm/agentsview/internal/db"
@@ -15,6 +16,13 @@ import (
 
 const tokenCoverageRepairMetadataKey = "token_coverage_repair_v1"
 const tokenCoverageBackfillBatchSize = 1000
+
+type columnMigration struct {
+	table  string
+	column string
+	def    string
+	desc   string
+}
 
 // coreDDL creates the tables and indexes. It uses unqualified
 // names because Open() sets search_path to the target schema.
@@ -160,365 +168,308 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_tool_result_events_dedup
 func EnsureSchema(
 	ctx context.Context, db *sql.DB, schema string,
 ) error {
+	start := time.Now()
 	quoted, err := quoteIdentifier(schema)
 	if err != nil {
 		return fmt.Errorf("invalid schema name: %w", err)
 	}
+	step := time.Now()
 	if _, err := db.ExecContext(ctx,
 		"CREATE SCHEMA IF NOT EXISTS "+quoted,
 	); err != nil {
 		return fmt.Errorf("creating pg schema: %w", err)
 	}
+	log.Printf(
+		"pg schema: create schema step completed in %s",
+		time.Since(step).Round(time.Millisecond),
+	)
+	step = time.Now()
 	if _, err := db.ExecContext(ctx, coreDDL); err != nil {
 		return fmt.Errorf("creating pg tables: %w", err)
 	}
+	log.Printf(
+		"pg schema: core DDL step completed in %s",
+		time.Since(step).Round(time.Millisecond),
+	)
 
 	// Idempotent column additions for forward compatibility.
-	alters := []struct {
-		table  string
-		column string
-		stmt   string
-		desc   string
-	}{
+	alters := []columnMigration{
 		{
 			"sessions", "deleted_at",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
+			`deleted_at TIMESTAMPTZ`,
 			"adding sessions.deleted_at",
 		},
 		{
 			"sessions", "created_at",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ`,
+			`created_at TIMESTAMPTZ`,
 			"adding sessions.created_at",
 		},
 		{
 			"sessions", "total_output_tokens",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS total_output_tokens
-			 INT NOT NULL DEFAULT 0`,
+			`total_output_tokens INT NOT NULL DEFAULT 0`,
 			"adding sessions.total_output_tokens",
 		},
 		{
 			"sessions", "peak_context_tokens",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS peak_context_tokens
-			 INT NOT NULL DEFAULT 0`,
+			`peak_context_tokens INT NOT NULL DEFAULT 0`,
 			"adding sessions.peak_context_tokens",
 		},
 		{
 			"sessions", "has_total_output_tokens",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS has_total_output_tokens
-			 BOOLEAN NOT NULL DEFAULT FALSE`,
+			`has_total_output_tokens BOOLEAN NOT NULL DEFAULT FALSE`,
 			"adding sessions.has_total_output_tokens",
 		},
 		{
 			"sessions", "has_peak_context_tokens",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS has_peak_context_tokens
-			 BOOLEAN NOT NULL DEFAULT FALSE`,
+			`has_peak_context_tokens BOOLEAN NOT NULL DEFAULT FALSE`,
 			"adding sessions.has_peak_context_tokens",
 		},
 		{
 			"messages", "model",
-			`ALTER TABLE messages
-			 ADD COLUMN IF NOT EXISTS model
-			 TEXT NOT NULL DEFAULT ''`,
+			`model TEXT NOT NULL DEFAULT ''`,
 			"adding messages.model",
 		},
 		{
 			"messages", "token_usage",
-			`ALTER TABLE messages
-			 ADD COLUMN IF NOT EXISTS token_usage
-			 TEXT NOT NULL DEFAULT ''`,
+			`token_usage TEXT NOT NULL DEFAULT ''`,
 			"adding messages.token_usage",
 		},
 		{
 			"messages", "context_tokens",
-			`ALTER TABLE messages
-			 ADD COLUMN IF NOT EXISTS context_tokens
-			 INT NOT NULL DEFAULT 0`,
+			`context_tokens INT NOT NULL DEFAULT 0`,
 			"adding messages.context_tokens",
 		},
 		{
 			"messages", "output_tokens",
-			`ALTER TABLE messages
-			 ADD COLUMN IF NOT EXISTS output_tokens
-			 INT NOT NULL DEFAULT 0`,
+			`output_tokens INT NOT NULL DEFAULT 0`,
 			"adding messages.output_tokens",
 		},
 		{
 			"messages", "has_context_tokens",
-			`ALTER TABLE messages
-			 ADD COLUMN IF NOT EXISTS has_context_tokens
-			 BOOLEAN NOT NULL DEFAULT FALSE`,
+			`has_context_tokens BOOLEAN NOT NULL DEFAULT FALSE`,
 			"adding messages.has_context_tokens",
 		},
 		{
 			"messages", "has_output_tokens",
-			`ALTER TABLE messages
-			 ADD COLUMN IF NOT EXISTS has_output_tokens
-			 BOOLEAN NOT NULL DEFAULT FALSE`,
+			`has_output_tokens BOOLEAN NOT NULL DEFAULT FALSE`,
 			"adding messages.has_output_tokens",
 		},
 		{
 			"messages", "claude_message_id",
-			`ALTER TABLE messages
-			 ADD COLUMN IF NOT EXISTS claude_message_id
-			 TEXT NOT NULL DEFAULT ''`,
+			`claude_message_id TEXT NOT NULL DEFAULT ''`,
 			"adding messages.claude_message_id",
 		},
 		{
 			"messages", "claude_request_id",
-			`ALTER TABLE messages
-			 ADD COLUMN IF NOT EXISTS claude_request_id
-			 TEXT NOT NULL DEFAULT ''`,
+			`claude_request_id TEXT NOT NULL DEFAULT ''`,
 			"adding messages.claude_request_id",
 		},
 		{
 			"tool_calls", "call_index",
-			`ALTER TABLE tool_calls
-			 ADD COLUMN IF NOT EXISTS call_index
-			 INT NOT NULL DEFAULT 0`,
+			`call_index INT NOT NULL DEFAULT 0`,
 			"adding tool_calls.call_index",
 		},
 		{
 			"sessions", "is_automated",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS is_automated
-			 BOOLEAN NOT NULL DEFAULT FALSE`,
+			`is_automated BOOLEAN NOT NULL DEFAULT FALSE`,
 			"adding sessions.is_automated",
 		},
 		{
 			"sessions", "tool_failure_signal_count",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS tool_failure_signal_count
-			 INT NOT NULL DEFAULT 0`,
+			`tool_failure_signal_count INT NOT NULL DEFAULT 0`,
 			"adding sessions.tool_failure_signal_count",
 		},
 		{
 			"sessions", "tool_retry_count",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS tool_retry_count
-			 INT NOT NULL DEFAULT 0`,
+			`tool_retry_count INT NOT NULL DEFAULT 0`,
 			"adding sessions.tool_retry_count",
 		},
 		{
 			"sessions", "edit_churn_count",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS edit_churn_count
-			 INT NOT NULL DEFAULT 0`,
+			`edit_churn_count INT NOT NULL DEFAULT 0`,
 			"adding sessions.edit_churn_count",
 		},
 		{
 			"sessions", "consecutive_failure_max",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS consecutive_failure_max
-			 INT NOT NULL DEFAULT 0`,
+			`consecutive_failure_max INT NOT NULL DEFAULT 0`,
 			"adding sessions.consecutive_failure_max",
 		},
 		{
 			"sessions", "outcome",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS outcome
-			 TEXT NOT NULL DEFAULT 'unknown'`,
+			`outcome TEXT NOT NULL DEFAULT 'unknown'`,
 			"adding sessions.outcome",
 		},
 		{
 			"sessions", "outcome_confidence",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS outcome_confidence
-			 TEXT NOT NULL DEFAULT 'low'`,
+			`outcome_confidence TEXT NOT NULL DEFAULT 'low'`,
 			"adding sessions.outcome_confidence",
 		},
 		{
 			"sessions", "ended_with_role",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS ended_with_role
-			 TEXT NOT NULL DEFAULT ''`,
+			`ended_with_role TEXT NOT NULL DEFAULT ''`,
 			"adding sessions.ended_with_role",
 		},
 		{
 			"sessions", "final_failure_streak",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS final_failure_streak
-			 INT NOT NULL DEFAULT 0`,
+			`final_failure_streak INT NOT NULL DEFAULT 0`,
 			"adding sessions.final_failure_streak",
 		},
 		{
 			"sessions", "signals_pending_since",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS signals_pending_since
-			 TEXT`,
+			`signals_pending_since TEXT`,
 			"adding sessions.signals_pending_since",
 		},
 		{
 			"sessions", "compaction_count",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS compaction_count
-			 INT NOT NULL DEFAULT 0`,
+			`compaction_count INT NOT NULL DEFAULT 0`,
 			"adding sessions.compaction_count",
 		},
 		{
 			"sessions", "mid_task_compaction_count",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS mid_task_compaction_count
-			 INT NOT NULL DEFAULT 0`,
+			`mid_task_compaction_count INT NOT NULL DEFAULT 0`,
 			"adding sessions.mid_task_compaction_count",
 		},
 		{
 			"sessions", "context_pressure_max",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS context_pressure_max
-			 DOUBLE PRECISION`,
+			`context_pressure_max DOUBLE PRECISION`,
 			"adding sessions.context_pressure_max",
 		},
 		{
 			"sessions", "health_score",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS health_score
-			 INT`,
+			`health_score INT`,
 			"adding sessions.health_score",
 		},
 		{
 			"sessions", "health_grade",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS health_grade
-			 TEXT`,
+			`health_grade TEXT`,
 			"adding sessions.health_grade",
 		},
 		{
 			"sessions", "has_tool_calls",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS has_tool_calls
-			 BOOLEAN NOT NULL DEFAULT FALSE`,
+			`has_tool_calls BOOLEAN NOT NULL DEFAULT FALSE`,
 			"adding sessions.has_tool_calls",
 		},
 		{
 			"sessions", "has_context_data",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS has_context_data
-			 BOOLEAN NOT NULL DEFAULT FALSE`,
+			`has_context_data BOOLEAN NOT NULL DEFAULT FALSE`,
 			"adding sessions.has_context_data",
 		},
 		{
 			"sessions", "data_version",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS data_version
-			 INT NOT NULL DEFAULT 0`,
+			`data_version INT NOT NULL DEFAULT 0`,
 			"adding sessions.data_version",
 		},
 		{
 			"sessions", "cwd",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS cwd
-			 TEXT NOT NULL DEFAULT ''`,
+			`cwd TEXT NOT NULL DEFAULT ''`,
 			"adding sessions.cwd",
 		},
 		{
 			"sessions", "git_branch",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS git_branch
-			 TEXT NOT NULL DEFAULT ''`,
+			`git_branch TEXT NOT NULL DEFAULT ''`,
 			"adding sessions.git_branch",
 		},
 		{
 			"sessions", "source_session_id",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS source_session_id
-			 TEXT NOT NULL DEFAULT ''`,
+			`source_session_id TEXT NOT NULL DEFAULT ''`,
 			"adding sessions.source_session_id",
 		},
 		{
 			"sessions", "source_version",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS source_version
-			 TEXT NOT NULL DEFAULT ''`,
+			`source_version TEXT NOT NULL DEFAULT ''`,
 			"adding sessions.source_version",
 		},
 		{
 			"sessions", "parser_malformed_lines",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS parser_malformed_lines
-			 INT NOT NULL DEFAULT 0`,
+			`parser_malformed_lines INT NOT NULL DEFAULT 0`,
 			"adding sessions.parser_malformed_lines",
 		},
 		{
 			"sessions", "is_truncated",
-			`ALTER TABLE sessions
-			 ADD COLUMN IF NOT EXISTS is_truncated
-			 BOOLEAN NOT NULL DEFAULT FALSE`,
+			`is_truncated BOOLEAN NOT NULL DEFAULT FALSE`,
 			"adding sessions.is_truncated",
 		},
 		{
 			"messages", "source_type",
-			`ALTER TABLE messages
-			 ADD COLUMN IF NOT EXISTS source_type
-			 TEXT NOT NULL DEFAULT ''`,
+			`source_type TEXT NOT NULL DEFAULT ''`,
 			"adding messages.source_type",
 		},
 		{
 			"messages", "source_subtype",
-			`ALTER TABLE messages
-			 ADD COLUMN IF NOT EXISTS source_subtype
-			 TEXT NOT NULL DEFAULT ''`,
+			`source_subtype TEXT NOT NULL DEFAULT ''`,
 			"adding messages.source_subtype",
 		},
 		{
 			"messages", "source_uuid",
-			`ALTER TABLE messages
-			 ADD COLUMN IF NOT EXISTS source_uuid
-			 TEXT NOT NULL DEFAULT ''`,
+			`source_uuid TEXT NOT NULL DEFAULT ''`,
 			"adding messages.source_uuid",
 		},
 		{
 			"messages", "source_parent_uuid",
-			`ALTER TABLE messages
-			 ADD COLUMN IF NOT EXISTS source_parent_uuid
-			 TEXT NOT NULL DEFAULT ''`,
+			`source_parent_uuid TEXT NOT NULL DEFAULT ''`,
 			"adding messages.source_parent_uuid",
 		},
 		{
 			"messages", "is_sidechain",
-			`ALTER TABLE messages
-			 ADD COLUMN IF NOT EXISTS is_sidechain
-			 BOOLEAN NOT NULL DEFAULT FALSE`,
+			`is_sidechain BOOLEAN NOT NULL DEFAULT FALSE`,
 			"adding messages.is_sidechain",
 		},
 		{
 			"messages", "is_compact_boundary",
-			`ALTER TABLE messages
-			 ADD COLUMN IF NOT EXISTS is_compact_boundary
-			 BOOLEAN NOT NULL DEFAULT FALSE`,
+			`is_compact_boundary BOOLEAN NOT NULL DEFAULT FALSE`,
 			"adding messages.is_compact_boundary",
 		},
 		{
 			"messages", "thinking_text",
-			`ALTER TABLE messages
-			 ADD COLUMN IF NOT EXISTS thinking_text
-			 TEXT NOT NULL DEFAULT ''`,
+			`thinking_text TEXT NOT NULL DEFAULT ''`,
 			"adding messages.thinking_text",
 		},
 	}
+	step = time.Now()
+	existingColumns, err := loadExistingColumns(ctx, db, alters)
+	if err != nil {
+		return err
+	}
+	log.Printf(
+		"pg schema: loaded existing columns in %s",
+		time.Since(step).Round(time.Millisecond),
+	)
+	step = time.Now()
 	tokenCoverageColumnsAdded := false
-	for _, a := range alters {
-		added, err := ensureColumn(ctx, db, a.table, a.column, a.stmt)
-		if err != nil {
-			return fmt.Errorf("%s: %w", a.desc, err)
-		}
-		switch a.column {
+	addedColumns, err := ensureColumns(ctx, db, existingColumns, alters)
+	if err != nil {
+		return err
+	}
+	for _, column := range addedColumns {
+		switch column {
 		case "has_total_output_tokens", "has_peak_context_tokens",
 			"has_context_tokens", "has_output_tokens":
-			tokenCoverageColumnsAdded = tokenCoverageColumnsAdded || added
+			tokenCoverageColumnsAdded = true
 		}
 	}
+	log.Printf(
+		"pg schema: column migration step completed in %s"+
+			" (%d column(s) added)",
+		time.Since(step).Round(time.Millisecond),
+		len(addedColumns),
+	)
+	step = time.Now()
 	if err := backfillIsAutomatedPG(ctx, db); err != nil {
 		return err
 	}
+	log.Printf(
+		"pg schema: automated-session backfill step completed in %s",
+		time.Since(step).Round(time.Millisecond),
+	)
+	step = time.Now()
 	if err := createPartialIndexesPG(ctx, db); err != nil {
 		return err
 	}
+	log.Printf(
+		"pg schema: partial indexes step completed in %s",
+		time.Since(step).Round(time.Millisecond),
+	)
+	step = time.Now()
 	runRepair, err := shouldRunTokenCoverageRepair(
 		ctx, db, tokenCoverageColumnsAdded,
 	)
@@ -526,14 +477,42 @@ func EnsureSchema(
 		return err
 	}
 	if !runRepair {
+		log.Printf(
+			"pg schema: token coverage repair check completed"+
+				" in %s (repair skipped)",
+			time.Since(step).Round(time.Millisecond),
+		)
+		log.Printf(
+			"pg schema: EnsureSchema completed in %s",
+			time.Since(start).Round(time.Millisecond),
+		)
 		return nil
 	}
+	log.Printf(
+		"pg schema: token coverage repair check completed"+
+			" in %s (repair needed)",
+		time.Since(step).Round(time.Millisecond),
+	)
+	step = time.Now()
 	if err := backfillTokenCoverageFlags(ctx, db); err != nil {
 		return err
 	}
+	log.Printf(
+		"pg schema: token coverage backfill step completed in %s",
+		time.Since(step).Round(time.Millisecond),
+	)
+	step = time.Now()
 	if err := markTokenCoverageRepairDone(ctx, db); err != nil {
 		return err
 	}
+	log.Printf(
+		"pg schema: token coverage repair marker stored in %s",
+		time.Since(step).Round(time.Millisecond),
+	)
+	log.Printf(
+		"pg schema: EnsureSchema completed in %s",
+		time.Since(start).Round(time.Millisecond),
+	)
 	return nil
 }
 
@@ -682,32 +661,125 @@ func batchUpdateAutomatedPG(
 	return nil
 }
 
-func ensureColumn(
-	ctx context.Context, db *sql.DB,
-	table, column, stmt string,
-) (bool, error) {
-	var exists bool
-	if err := db.QueryRowContext(ctx,
-		`SELECT EXISTS (
-			SELECT 1
-			FROM information_schema.columns
-			WHERE table_schema = current_schema()
-			  AND table_name = $1
-			  AND column_name = $2
-		)`,
-		table, column,
-	).Scan(&exists); err != nil {
-		return false, fmt.Errorf(
-			"probing %s.%s: %w", table, column, err,
+func loadExistingColumns(
+	ctx context.Context, db *sql.DB, alters []columnMigration,
+) (map[string]map[string]bool, error) {
+	tablesSeen := map[string]bool{}
+	var tables []string
+	for _, a := range alters {
+		if tablesSeen[a.table] {
+			continue
+		}
+		tablesSeen[a.table] = true
+		tables = append(tables, a.table)
+	}
+
+	existing := map[string]map[string]bool{}
+	if len(tables) == 0 {
+		return existing, nil
+	}
+
+	pb := &paramBuilder{}
+	phs := make([]string, len(tables))
+	for i, table := range tables {
+		phs[i] = pb.add(table)
+	}
+	rows, err := db.QueryContext(ctx,
+		`SELECT table_name, column_name
+		 FROM information_schema.columns
+		 WHERE table_schema = current_schema()
+		   AND table_name IN (`+strings.Join(phs, ",")+`)`,
+		pb.args...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"loading existing PG columns: %w", err,
 		)
 	}
-	if exists {
-		return false, nil
+	defer rows.Close()
+
+	for rows.Next() {
+		var table, column string
+		if err := rows.Scan(&table, &column); err != nil {
+			return nil, fmt.Errorf(
+				"scanning existing PG columns: %w", err,
+			)
+		}
+		if existing[table] == nil {
+			existing[table] = map[string]bool{}
+		}
+		existing[table][column] = true
 	}
-	if _, err := db.ExecContext(ctx, stmt); err != nil {
-		return false, err
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf(
+			"iterating existing PG columns: %w", err,
+		)
 	}
-	return true, nil
+	return existing, nil
+}
+
+func ensureColumns(
+	ctx context.Context, db *sql.DB,
+	existing map[string]map[string]bool,
+	migrations []columnMigration,
+) ([]string, error) {
+	type tableAdds struct {
+		table      string
+		migrations []columnMigration
+	}
+
+	byTable := map[string]*tableAdds{}
+	var tables []*tableAdds
+	for _, migration := range migrations {
+		if existing[migration.table][migration.column] {
+			continue
+		}
+		adds := byTable[migration.table]
+		if adds == nil {
+			adds = &tableAdds{table: migration.table}
+			byTable[migration.table] = adds
+			tables = append(tables, adds)
+		}
+		adds.migrations = append(adds.migrations, migration)
+	}
+
+	var added []string
+	for _, adds := range tables {
+		quotedTable, err := quoteIdentifier(adds.table)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"invalid PG migration table %q: %w",
+				adds.table, err,
+			)
+		}
+		clauses := make([]string, len(adds.migrations))
+		for i, migration := range adds.migrations {
+			clauses[i] = "ADD COLUMN IF NOT EXISTS " +
+				migration.def
+		}
+		stmt := "ALTER TABLE " + quotedTable + " " +
+			strings.Join(clauses, ", ")
+		step := time.Now()
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			return nil, fmt.Errorf(
+				"adding %d column(s) to %s: %w",
+				len(adds.migrations), adds.table, err,
+			)
+		}
+		log.Printf(
+			"pg schema: added %d column(s) to %s in %s",
+			len(adds.migrations), adds.table,
+			time.Since(step).Round(time.Millisecond),
+		)
+		if existing[adds.table] == nil {
+			existing[adds.table] = map[string]bool{}
+		}
+		for _, migration := range adds.migrations {
+			existing[adds.table][migration.column] = true
+			added = append(added, migration.column)
+		}
+	}
+	return added, nil
 }
 
 func shouldRunTokenCoverageRepair(
