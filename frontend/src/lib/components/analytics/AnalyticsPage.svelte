@@ -13,9 +13,11 @@
   import SessionHealthSection from "./SessionHealthSection.svelte";
   import TopSessions from "./TopSessions.svelte";
   import ActiveFilters from "./ActiveFilters.svelte";
+  import SessionFilterControl from "../filters/SessionFilterControl.svelte";
   import { analytics } from "../../stores/analytics.svelte.js";
   import { sessions } from "../../stores/sessions.svelte.js";
   import { events } from "../../stores/events.svelte.js";
+  import { ui } from "../../stores/ui.svelte.js";
   import { exportAnalyticsCSV } from "../../utils/csv-export.js";
 
   function shortTz(tz: string): string {
@@ -136,6 +138,16 @@
 
 <div class="analytics-page">
   <div class="analytics-toolbar">
+    {#if !ui.sidebarOpen}
+      <div class="toolbar-filter-anchor">
+        <SessionFilterControl
+          showDisplay={false}
+          showStarred={false}
+          align="left"
+        />
+      </div>
+    {/if}
+
     <DateRangeSelector
       from={analytics.from}
       to={analytics.to}
@@ -226,6 +238,12 @@
     background: var(--bg-surface);
     border-bottom: 1px solid var(--border-muted);
     flex-shrink: 0;
+  }
+
+  .toolbar-filter-anchor {
+    position: relative;
+    display: flex;
+    align-items: center;
   }
 
   .refresh-btn {
