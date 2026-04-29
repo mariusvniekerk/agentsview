@@ -813,6 +813,11 @@
     right: 0;
     margin-top: 4px;
     width: 220px;
+    max-height: min(560px, calc(100vh - 128px));
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
     background: var(--bg-surface);
     border: 1px solid var(--border-default);
     border-radius: var(--radius-md);
