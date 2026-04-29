@@ -162,6 +162,53 @@ describe("UsageStore group-by linking", () => {
   });
 });
 
+describe("UsageStore session filter params", () => {
+  beforeEach(() => {
+    installStorage();
+    vi.clearAllMocks();
+  });
+
+  it("passes shared session filters to usage endpoints", async () => {
+    const { usage } = await loadStore();
+    const { sessions } = await import("./sessions.svelte.js");
+    const api = await import("../api/client.js");
+
+    sessions.filters.project = "proj-a";
+    sessions.filters.machine = "host-a,host-b";
+    sessions.filters.agent = "claude,codex";
+    sessions.filters.minUserMessages = 5;
+    sessions.filters.includeOneShot = false;
+    sessions.filters.includeAutomated = true;
+    sessions.filters.recentlyActive = true;
+
+    await usage.fetchAll();
+
+    expect(api.getUsageSummary).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        project: "proj-a",
+        machine: "host-a,host-b",
+        agent: "claude,codex",
+        min_user_messages: 5,
+        include_one_shot: false,
+        include_automated: true,
+      }),
+    );
+    const params = vi.mocked(api.getUsageSummary).mock.lastCall?.[0];
+    expect(params?.active_since).toEqual(expect.any(String));
+
+    expect(api.getUsageTopSessions).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        project: "proj-a",
+        machine: "host-a,host-b",
+        agent: "claude,codex",
+        min_user_messages: 5,
+        include_one_shot: false,
+        include_automated: true,
+      }),
+    );
+  });
+});
+
 describe("UsageStore rolling default date range", () => {
   beforeEach(() => {
     installStorage();
@@ -239,7 +286,7 @@ describe("UsageStore rolling default date range", () => {
 });
 
 describe("buildUsageUrlParams", () => {
-  it("omits from/to when isPinned is false with default window, includes excludes", async () => {
+  it("omits from/to when isPinned is false with default window, includes header filters", async () => {
     const { buildUsageUrlParams } = await loadStore();
     const params = buildUsageUrlParams({
       from: "2026-03-26",
@@ -252,7 +299,6 @@ describe("buildUsageUrlParams", () => {
     });
     expect(params).toEqual({
       exclude_project: "p1",
-      exclude_agent: "a1",
       exclude_model: "m1",
     });
   });

@@ -13,16 +13,21 @@ import (
 // UsageFilter controls the date range, agent, and timezone
 // for daily usage aggregation queries.
 type UsageFilter struct {
-	From           string // YYYY-MM-DD, inclusive
-	To             string // YYYY-MM-DD, inclusive
-	Agent          string // "" for all; supports comma-separated
-	Project        string // "" for all; supports comma-separated
-	Model          string // "" for all; supports comma-separated
-	ExcludeProject string // comma-separated projects to exclude
-	ExcludeAgent   string // comma-separated agents to exclude
-	ExcludeModel   string // comma-separated models to exclude
-	Timezone       string // IANA timezone, "" for UTC
-	Breakdowns     bool   // populate Project/AgentBreakdowns per day
+	From             string // YYYY-MM-DD, inclusive
+	To               string // YYYY-MM-DD, inclusive
+	Agent            string // "" for all; supports comma-separated
+	Project          string // "" for all; supports comma-separated
+	Machine          string // "" for all; supports comma-separated
+	Model            string // "" for all; supports comma-separated
+	ExcludeProject   string // comma-separated projects to exclude
+	ExcludeAgent     string // comma-separated agents to exclude
+	ExcludeModel     string // comma-separated models to exclude
+	Timezone         string // IANA timezone, "" for UTC
+	MinUserMessages  int    // user_message_count >= N
+	ExcludeOneShot   bool   // message_count > 1
+	ExcludeAutomated bool   // is_automated = false
+	ActiveSince      string // RFC3339 session recency cutoff
+	Breakdowns       bool   // populate Project/AgentBreakdowns per day
 }
 
 // appendFilterClauses appends WHERE clauses for all include and
@@ -68,6 +73,8 @@ func (f UsageFilter) appendFilterClauses(
 	query, args = appendCSV(
 		query, args, "s.project", f.Project, true)
 	query, args = appendCSV(
+		query, args, "s.machine", f.Machine, true)
+	query, args = appendCSV(
 		query, args, "m.model", f.Model, true)
 
 	// Exclude filters.
@@ -77,6 +84,21 @@ func (f UsageFilter) appendFilterClauses(
 		query, args, "s.agent", f.ExcludeAgent, false)
 	query, args = appendCSV(
 		query, args, "m.model", f.ExcludeModel, false)
+
+	if f.MinUserMessages > 0 {
+		query += " AND s.user_message_count >= ?"
+		args = append(args, f.MinUserMessages)
+	}
+	if f.ExcludeOneShot {
+		query += " AND s.message_count > 1"
+	}
+	if f.ExcludeAutomated {
+		query += " AND COALESCE(s.is_automated, 0) = 0"
+	}
+	if f.ActiveSince != "" {
+		query += " AND COALESCE(s.ended_at, s.started_at, s.created_at) >= ?"
+		args = append(args, f.ActiveSince)
+	}
 
 	return query, args
 }

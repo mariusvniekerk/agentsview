@@ -104,17 +104,37 @@ func parseUsageFilter(
 		return db.UsageFilter{}, false
 	}
 
+	minUserMsgs, ok := parseIntParam(w, r, "min_user_messages")
+	if !ok {
+		return db.UsageFilter{}, false
+	}
+
+	activeSince := q.Get("active_since")
+	if activeSince != "" && !timeutil.IsValidTimestamp(activeSince) {
+		writeError(w, http.StatusBadRequest,
+			"invalid active_since: use RFC3339 timestamp")
+		return db.UsageFilter{}, false
+	}
+
+	includeOneShot := q.Get("include_one_shot") == "true"
+	includeAutomated := q.Get("include_automated") == "true"
+
 	return db.UsageFilter{
-		From:           from,
-		To:             to,
-		Agent:          q.Get("agent"),
-		Project:        q.Get("project"),
-		ExcludeProject: q.Get("exclude_project"),
-		ExcludeAgent:   q.Get("exclude_agent"),
-		ExcludeModel:   q.Get("exclude_model"),
-		Model:          q.Get("model"),
-		Timezone:       tz,
-		Breakdowns:     true,
+		From:             from,
+		To:               to,
+		Agent:            q.Get("agent"),
+		Project:          q.Get("project"),
+		Machine:          q.Get("machine"),
+		ExcludeProject:   q.Get("exclude_project"),
+		ExcludeAgent:     q.Get("exclude_agent"),
+		ExcludeModel:     q.Get("exclude_model"),
+		Model:            q.Get("model"),
+		Timezone:         tz,
+		MinUserMessages:  minUserMsgs,
+		ExcludeOneShot:   !includeOneShot,
+		ExcludeAutomated: !includeAutomated,
+		ActiveSince:      activeSince,
+		Breakdowns:       true,
 	}, true
 }
 
@@ -261,16 +281,21 @@ func (s *Server) computeComparison(
 	priorFrom := priorTo.AddDate(0, 0, -(days - 1))
 
 	priorFilter := db.UsageFilter{
-		From:           priorFrom.Format("2006-01-02"),
-		To:             priorTo.Format("2006-01-02"),
-		Agent:          f.Agent,
-		Project:        f.Project,
-		Model:          f.Model,
-		ExcludeProject: f.ExcludeProject,
-		ExcludeAgent:   f.ExcludeAgent,
-		ExcludeModel:   f.ExcludeModel,
-		Timezone:       f.Timezone,
-		Breakdowns:     false,
+		From:             priorFrom.Format("2006-01-02"),
+		To:               priorTo.Format("2006-01-02"),
+		Agent:            f.Agent,
+		Project:          f.Project,
+		Machine:          f.Machine,
+		Model:            f.Model,
+		ExcludeProject:   f.ExcludeProject,
+		ExcludeAgent:     f.ExcludeAgent,
+		ExcludeModel:     f.ExcludeModel,
+		Timezone:         f.Timezone,
+		MinUserMessages:  f.MinUserMessages,
+		ExcludeOneShot:   f.ExcludeOneShot,
+		ExcludeAutomated: f.ExcludeAutomated,
+		ActiveSince:      f.ActiveSince,
+		Breakdowns:       false,
 	}
 	priorResult, err := s.db.GetDailyUsage(
 		r.Context(), priorFilter,

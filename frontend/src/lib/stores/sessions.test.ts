@@ -855,6 +855,22 @@ describe("SessionsStore", () => {
     });
   });
 
+  describe("agent filter", () => {
+    it("should clear the filter when the last agent is removed", async () => {
+      sessions.filters.agent = "opencode";
+
+      sessions.toggleAgentFilter("opencode");
+      await vi.waitFor(() => {
+        expect(api.listSessions).toHaveBeenCalled();
+      });
+
+      expect(sessions.filters.agent).toBe("");
+      expect(sessions.selectedAgents).toEqual([]);
+      expect(sessions.isAgentSelected("opencode")).toBe(false);
+      expectListSessionsCalledWith({ agent: undefined });
+    });
+  });
+
   describe("navigateSession", () => {
     function seedSessions(store: typeof sessions) {
       store.sessions = [

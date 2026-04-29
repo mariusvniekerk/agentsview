@@ -68,10 +68,26 @@ func appendPGUsageFilterClauses(
 
 	query = appendCSV(query, "s.agent", f.Agent, true)
 	query = appendCSV(query, "s.project", f.Project, true)
+	query = appendCSV(query, "s.machine", f.Machine, true)
 	query = appendCSV(query, "m.model", f.Model, true)
 	query = appendCSV(query, "s.project", f.ExcludeProject, false)
 	query = appendCSV(query, "s.agent", f.ExcludeAgent, false)
 	query = appendCSV(query, "m.model", f.ExcludeModel, false)
+
+	if f.MinUserMessages > 0 {
+		query += " AND s.user_message_count >= " +
+			pb.add(f.MinUserMessages)
+	}
+	if f.ExcludeOneShot {
+		query += " AND s.message_count > 1"
+	}
+	if f.ExcludeAutomated {
+		query += " AND COALESCE(s.is_automated, false) = false"
+	}
+	if f.ActiveSince != "" {
+		query += " AND COALESCE(s.ended_at, s.started_at, s.created_at) >= " +
+			pb.add(f.ActiveSince) + "::timestamptz"
+	}
 
 	return query, pb.args
 }

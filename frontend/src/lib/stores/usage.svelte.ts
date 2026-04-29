@@ -7,6 +7,7 @@ import {
   getUsageSummary,
   getUsageTopSessions,
 } from "../api/client.js";
+import { sessions } from "./sessions.svelte.js";
 
 export type GroupBy = "project" | "model" | "agent";
 export type TimeSeriesView = "stacked-area" | "bars" | "lines";
@@ -131,6 +132,20 @@ function saveUsageFilters(f: UsageFilterState): void {
   }
 }
 
+function joinCsvParts(...parts: string[]): string {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const part of parts) {
+    for (const value of part.split(",")) {
+      const trimmed = value.trim();
+      if (!trimmed || seen.has(trimmed)) continue;
+      seen.add(trimmed);
+      out.push(trimmed);
+    }
+  }
+  return out.join(",");
+}
+
 type Endpoint = "summary" | "topSessions";
 
 class UsageStore {
@@ -177,16 +192,37 @@ class UsageStore {
   }
 
   private baseParams(): UsageParams {
+    const sessionFilters = sessions.filters;
     const p: UsageParams = {
       from: this.from,
       to: this.to,
       timezone: this.timezone,
+      project: sessionFilters.project || undefined,
+      machine: sessionFilters.machine || undefined,
+      agent: sessionFilters.agent || undefined,
+      min_user_messages:
+        sessionFilters.minUserMessages > 0
+          ? sessionFilters.minUserMessages
+          : undefined,
+      include_one_shot: sessionFilters.includeOneShot,
+      include_automated:
+        sessionFilters.includeAutomated || undefined,
+      active_since: sessionFilters.recentlyActive
+        ? new Date(
+            Date.now() - 24 * 60 * 60 * 1000,
+          ).toISOString()
+        : undefined,
     };
-    if (this.excludedProjects) {
+    if (
+      sessionFilters.hideUnknownProject &&
+      sessionFilters.project !== "unknown"
+    ) {
+      p.exclude_project = joinCsvParts(
+        this.excludedProjects,
+        "unknown",
+      );
+    } else if (this.excludedProjects) {
       p.exclude_project = this.excludedProjects;
-    }
-    if (this.excludedAgents) {
-      p.exclude_agent = this.excludedAgents;
     }
     if (this.excludedModels) {
       p.exclude_model = this.excludedModels;
@@ -297,11 +333,7 @@ class UsageStore {
   }
 
   get hasActiveFilters(): boolean {
-    return (
-      this.excludedProjects !== "" ||
-      this.excludedAgents !== "" ||
-      this.excludedModels !== ""
-    );
+    return this.excludedProjects !== "" || this.excludedModels !== "";
   }
 
   setTimeSeriesGroupBy(g: GroupBy) {
@@ -445,14 +477,11 @@ export function buildUsageUrlParams(
   ) {
     params["window_days"] = String(state.windowDays);
   }
-  if (state.excludedProjects) {
-    params["exclude_project"] = state.excludedProjects;
-  }
-  if (state.excludedAgents) {
-    params["exclude_agent"] = state.excludedAgents;
-  }
   if (state.excludedModels) {
     params["exclude_model"] = state.excludedModels;
+  }
+  if (state.excludedProjects) {
+    params["exclude_project"] = state.excludedProjects;
   }
   return params;
 }

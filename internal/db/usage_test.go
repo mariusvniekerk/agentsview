@@ -1733,6 +1733,108 @@ func TestExcludeProjectFilter(t *testing.T) {
 	}
 }
 
+func TestUsageSessionFilters(t *testing.T) {
+	d := testDB(t)
+	ctx := context.Background()
+
+	requireNoError(t, d.UpsertModelPricing([]ModelPricing{{
+		ModelPattern:  "claude-sonnet",
+		InputPerMTok:  3.0,
+		OutputPerMTok: 15.0,
+	}}), "UpsertModelPricing")
+
+	tokenUsage := json.RawMessage(
+		`{"input_tokens":1000,"output_tokens":500}`,
+	)
+
+	insertSession(t, d, "usage-filter-keep", "proj", func(s *Session) {
+		s.Machine = "host-a"
+		s.Agent = "claude"
+		s.MessageCount = 4
+		s.UserMessageCount = 3
+		s.StartedAt = new("2024-06-15T10:00:00Z")
+	})
+	insertSession(t, d, "usage-filter-machine", "proj", func(s *Session) {
+		s.Machine = "host-b"
+		s.Agent = "claude"
+		s.MessageCount = 4
+		s.UserMessageCount = 3
+		s.StartedAt = new("2024-06-15T10:00:00Z")
+	})
+	insertSession(t, d, "usage-filter-prompts", "proj", func(s *Session) {
+		s.Machine = "host-a"
+		s.Agent = "claude"
+		s.MessageCount = 4
+		s.UserMessageCount = 1
+		s.StartedAt = new("2024-06-15T10:00:00Z")
+	})
+	insertSession(t, d, "usage-filter-one-shot", "proj", func(s *Session) {
+		s.Machine = "host-a"
+		s.Agent = "claude"
+		s.MessageCount = 1
+		s.UserMessageCount = 1
+		s.StartedAt = new("2024-06-15T10:00:00Z")
+	})
+	insertSession(t, d, "usage-filter-automated", "proj", func(s *Session) {
+		s.Machine = "host-a"
+		s.Agent = "claude"
+		s.MessageCount = 4
+		s.UserMessageCount = 3
+		s.StartedAt = new("2024-06-15T10:00:00Z")
+	})
+	if _, err := d.getWriter().Exec(
+		"UPDATE sessions SET is_automated = 1 WHERE id = ?",
+		"usage-filter-automated",
+	); err != nil {
+		t.Fatalf("patch automated fixture: %v", err)
+	}
+
+	for _, sid := range []string{
+		"usage-filter-keep",
+		"usage-filter-machine",
+		"usage-filter-prompts",
+		"usage-filter-one-shot",
+		"usage-filter-automated",
+	} {
+		insertMessages(t, d, Message{
+			SessionID:  sid,
+			Ordinal:    0,
+			Role:       "assistant",
+			Timestamp:  "2024-06-15T10:30:00Z",
+			Model:      "claude-sonnet",
+			TokenUsage: tokenUsage,
+		})
+	}
+
+	filter := UsageFilter{
+		From:             "2024-06-01",
+		To:               "2024-06-30",
+		Machine:          "host-a",
+		MinUserMessages:  2,
+		ExcludeOneShot:   true,
+		ExcludeAutomated: true,
+	}
+
+	daily, err := d.GetDailyUsage(ctx, filter)
+	requireNoError(t, err, "GetDailyUsage session filters")
+	if daily.Totals.InputTokens != 1000 {
+		t.Errorf("InputTokens = %d, want 1000",
+			daily.Totals.InputTokens)
+	}
+
+	top, err := d.GetTopSessionsByCost(ctx, filter, 10)
+	requireNoError(t, err, "GetTopSessionsByCost session filters")
+	if len(top) != 1 || top[0].SessionID != "usage-filter-keep" {
+		t.Fatalf("top sessions = %+v, want only usage-filter-keep", top)
+	}
+
+	counts, err := d.GetUsageSessionCounts(ctx, filter)
+	requireNoError(t, err, "GetUsageSessionCounts session filters")
+	if counts.Total != 1 {
+		t.Errorf("counts.Total = %d, want 1", counts.Total)
+	}
+}
+
 // TestExcludeAgentFilter verifies ExcludeAgent on GetDailyUsage.
 func TestExcludeAgentFilter(t *testing.T) {
 	d := testDB(t)

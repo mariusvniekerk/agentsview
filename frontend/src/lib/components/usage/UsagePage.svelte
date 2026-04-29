@@ -1,37 +1,36 @@
 <script lang="ts">
-  import { onMount, onDestroy, untrack } from "svelte";
+  import { onMount, onDestroy, tick, untrack } from "svelte";
   import {
     usage,
     buildUsageUrlParams,
     parseWindowDays,
   } from "../../stores/usage.svelte.js";
-  import { sessions } from "../../stores/sessions.svelte.js";
+  import {
+    sessions,
+    filtersToParams,
+    parseFiltersFromParams,
+  } from "../../stores/sessions.svelte.js";
   import { router } from "../../stores/router.svelte.js";
   import { events } from "../../stores/events.svelte.js";
-  import { agentColor } from "../../utils/agents.js";
   import UsageSummaryCards from "./UsageSummaryCards.svelte";
   import CostTimeSeriesChart from "./CostTimeSeriesChart.svelte";
   import AttributionPanel from "./AttributionPanel.svelte";
   import TopSessionsTable from "./TopSessionsTable.svelte";
   import CacheEfficiencyPanel from "./CacheEfficiencyPanel.svelte";
   import DateRangeSelector from "../shared/DateRangeSelector.svelte";
+  import SessionFilterControl from "../filters/SessionFilterControl.svelte";
+  import SessionActiveFilters from "../filters/SessionActiveFilters.svelte";
   import FilterDropdown from "./FilterDropdown.svelte";
 
   const REFRESH_MS = 5 * 60 * 1000;
   let refreshTimer: ReturnType<typeof setInterval> | undefined;
   let unsubEvents: (() => void) | undefined;
+  let mounted = false;
 
   const projectItems = $derived(
     sessions.projects.map((p) => ({
       name: p.name,
       count: p.session_count,
-    })),
-  );
-
-  const agentItems = $derived(
-    sessions.agents.map((a) => ({
-      name: a.name,
-      count: a.session_count,
     })),
   );
 
@@ -80,6 +79,17 @@
   const modelItems = $derived(
     knownModels.map((m) => ({ name: m })),
   );
+  const hiddenModels = $derived(
+    usage.excludedModels
+      ? usage.excludedModels.split(",").filter(Boolean)
+      : [],
+  );
+  const sessionUrlParams = $derived(
+    filtersToParams(sessions.filters),
+  );
+  const sessionFilterSignature = $derived(
+    JSON.stringify(sessionUrlParams),
+  );
 
   // URL-init: seed store filters from URL params when landing
   // on /usage with a deep-link. A bare /usage preserves the
@@ -87,9 +97,18 @@
   // apply params that are actually present in the URL.
   const USAGE_FILTER_KEYS = new Set([
     "from", "to", "window_days",
-    "exclude_project", "exclude_agent", "exclude_model",
+    "exclude_model",
   ]);
-  let urlInitRan = false;
+  const SESSION_FILTER_KEYS = new Set([
+    "project", "machine", "agent",
+    "date", "date_from", "date_to",
+    "active_since", "exclude_project",
+    "min_messages", "max_messages", "min_user_messages",
+    "include_one_shot", "include_automated",
+  ]);
+  let urlInitRan = $state(false);
+  let urlWritebackReady = $state(false);
+  let initialFetchDone = $state(false);
   $effect(() => {
     const route = router.route;
     const params = router.params;
@@ -98,10 +117,16 @@
       const hasDateParam = !!params["from"] || !!params["to"];
       const parsedWindowDays = parseWindowDays(params["window_days"]);
       const hasFilterKeys = Object.keys(params).some(
-        (k) => USAGE_FILTER_KEYS.has(k),
+        (k) =>
+          USAGE_FILTER_KEYS.has(k) ||
+          SESSION_FILTER_KEYS.has(k),
+      );
+      const hasSessionFilterKeys = Object.keys(params).some(
+        (k) => SESSION_FILTER_KEYS.has(k),
       );
 
       let changed = false;
+      let sessionChanged = false;
 
       // Sync pin state from URL: dated URL pins, undated URL unpins.
       // Runs before the !hasFilterKeys early return so a fully bare URL
@@ -127,6 +152,21 @@
         urlInitRan = true;
         return;
       }
+      if (hasSessionFilterKeys) {
+        const nextSessionParams = filtersToParams(
+          parseFiltersFromParams(params),
+        );
+        const currentSessionParams = filtersToParams(
+          sessions.filters,
+        );
+        if (
+          JSON.stringify(nextSessionParams) !==
+          JSON.stringify(currentSessionParams)
+        ) {
+          sessions.initFromParams(params);
+          sessionChanged = true;
+        }
+      }
       if (params["from"] && params["from"] !== usage.from) {
         usage.from = params["from"];
         changed = true;
@@ -135,14 +175,9 @@
         usage.to = params["to"];
         changed = true;
       }
-      const newExProj = params["exclude_project"] ?? "";
-      if (newExProj !== usage.excludedProjects) {
-        usage.excludedProjects = newExProj;
-        changed = true;
-      }
-      const newExAgent = params["exclude_agent"] ?? "";
-      if (newExAgent !== usage.excludedAgents) {
-        usage.excludedAgents = newExAgent;
+      const newExProject = params["exclude_project"] ?? "";
+      if (newExProject !== usage.excludedProjects) {
+        usage.excludedProjects = newExProject;
         changed = true;
       }
       const newExModel = params["exclude_model"] ?? "";
@@ -150,7 +185,7 @@
         usage.excludedModels = newExModel;
         changed = true;
       }
-      if (changed && urlInitRan) {
+      if ((changed || sessionChanged) && urlInitRan) {
         usage.fetchAll();
       }
       urlInitRan = true;
@@ -169,14 +204,36 @@
       excludedAgents: usage.excludedAgents,
       excludedModels: usage.excludedModels,
     };
+    const nextParams = {
+      ...buildUsageUrlParams(state),
+      ...sessionUrlParams,
+    };
+    const ready = urlInitRan && urlWritebackReady;
     untrack(() => {
-      if (router.route !== "usage") return;
-      router.replaceParams(buildUsageUrlParams(state));
+      if (!ready || router.route !== "usage") return;
+      router.replaceParams(nextParams);
+    });
+  });
+
+  $effect(() => {
+    const signature = sessionFilterSignature;
+    const ready = urlInitRan && urlWritebackReady;
+    untrack(() => {
+      if (!ready || !signature || router.route !== "usage" || !mounted) {
+        return;
+      }
+      if (!initialFetchDone) {
+        initialFetchDone = true;
+      }
+      usage.fetchAll();
     });
   });
 
   onMount(() => {
-    usage.fetchAll();
+    mounted = true;
+    tick().then(() => {
+      urlWritebackReady = true;
+    });
     refreshTimer = setInterval(
       () => usage.fetchAll(),
       REFRESH_MS,
@@ -196,9 +253,20 @@
 
 <div class="usage-page">
   <div class="usage-toolbar">
-    <h2 class="page-title">Usage</h2>
-
     <div class="toolbar-controls">
+      <div class="usage-filter-anchor">
+        <SessionFilterControl
+          showDisplay={false}
+          showStarred={false}
+          align="left"
+          extraActive={usage.hasActiveFilters || !!sessions.filters.project}
+          onClearExtra={() => {
+            sessions.filters.project = "";
+            usage.clearFilters();
+          }}
+        />
+      </div>
+
       <DateRangeSelector
         from={usage.from}
         to={usage.to}
@@ -212,17 +280,8 @@
         excludedCsv={usage.excludedProjects}
         onToggle={(name) => usage.toggleProject(name)}
         onSelectAll={() => usage.selectAllProjects()}
-        onDeselectAll={() => usage.deselectAllProjects(projectItems.map(p => p.name))}
-      />
-
-      <FilterDropdown
-        label="Agent"
-        items={agentItems}
-        excludedCsv={usage.excludedAgents}
-        onToggle={(name) => usage.toggleAgent(name)}
-        onSelectAll={() => usage.selectAllAgents()}
-        onDeselectAll={() => usage.deselectAllAgents(agentItems.map(a => a.name))}
-        color={agentColor}
+        onDeselectAll={() =>
+          usage.deselectAllProjects(projectItems.map((p) => p.name))}
       />
 
       <FilterDropdown
@@ -231,7 +290,8 @@
         excludedCsv={usage.excludedModels}
         onToggle={(name) => usage.toggleModel(name)}
         onSelectAll={() => usage.selectAllModels()}
-        onDeselectAll={() => usage.deselectAllModels(modelItems.map(m => m.name))}
+        onDeselectAll={() =>
+          usage.deselectAllModels(modelItems.map((m) => m.name))}
       />
 
       <button
@@ -250,16 +310,15 @@
         </svg>
       </button>
 
-      {#if usage.hasActiveFilters}
-        <button
-          class="clear-filters"
-          onclick={() => usage.clearFilters()}
-        >
-          Clear filters
-        </button>
-      {/if}
     </div>
   </div>
+
+  <SessionActiveFilters
+    modelFilters={hiddenModels}
+    onClearProjects={() => usage.selectAllProjects()}
+    onRemoveModel={(model) => usage.toggleModel(model)}
+    onClearModels={() => usage.selectAllModels()}
+  />
 
   <div class="usage-content">
     <UsageSummaryCards />
@@ -301,13 +360,6 @@
     flex-shrink: 0;
   }
 
-  .page-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-primary);
-    white-space: nowrap;
-  }
-
   .toolbar-controls {
     display: flex;
     align-items: center;
@@ -316,20 +368,10 @@
     flex: 1;
   }
 
-  .clear-filters {
-    height: 26px;
-    padding: 0 8px;
-    border: none;
-    background: none;
-    color: var(--text-muted);
-    font-size: 11px;
-    cursor: pointer;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-  }
-
-  .clear-filters:hover {
-    color: var(--text-primary);
+  .usage-filter-anchor {
+    position: relative;
+    display: flex;
+    align-items: center;
   }
 
   .refresh-btn {

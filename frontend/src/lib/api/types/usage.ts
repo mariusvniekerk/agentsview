@@ -127,11 +127,16 @@ export interface UsageParams {
   from?: string;
   to?: string;
   project?: string;
+  machine?: string;
   agent?: string;
   model?: string;
   exclude_project?: string;
   exclude_agent?: string;
   exclude_model?: string;
+  min_user_messages?: number;
+  include_one_shot?: boolean;
+  include_automated?: boolean;
+  active_since?: string;
   timezone?: string;
 }
 

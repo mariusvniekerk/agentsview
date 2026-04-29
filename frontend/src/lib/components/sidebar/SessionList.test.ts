@@ -10,7 +10,7 @@ import {
 import { mount, tick, unmount } from "svelte";
 // @ts-ignore
 import SessionList from "./SessionList.svelte";
-import sessionListSource from "./SessionList.svelte?raw";
+import sessionFilterControlSource from "../filters/SessionFilterControl.svelte?raw";
 import { sessions } from "../../stores/sessions.svelte.js";
 import { starred } from "../../stores/starred.svelte.js";
 
@@ -84,9 +84,9 @@ describe("SessionList filter dropdown", () => {
     );
     expect(dropdown).not.toBeNull();
 
-    expect(sessionListSource).toContain(
+    expect(sessionFilterControlSource).toContain(
       "max-height: min(560px, calc(100vh - 128px));",
     );
-    expect(sessionListSource).toContain("overflow-y: auto;");
+    expect(sessionFilterControlSource).toContain("overflow-y: auto;");
   });
 });
