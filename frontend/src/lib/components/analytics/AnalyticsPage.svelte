@@ -58,6 +58,7 @@
   // so that local drill-downs don't re-trigger.
   $effect(() => {
     const headerProject = sessions.filters.project;
+    const headerMachine = sessions.filters.machine;
     const headerAgent = sessions.filters.agent;
     const headerRecentlyActive = sessions.filters.recentlyActive;
     const headerMinUserMessages =
@@ -68,6 +69,7 @@
       sessions.filters.includeAutomated;
 
     const curProject = untrack(() => analytics.project);
+    const curMachine = untrack(() => analytics.machine);
     const curAgent = untrack(() => analytics.agent);
     const curRecentlyActive = untrack(
       () => analytics.recentlyActive,
@@ -85,6 +87,10 @@
     let changed = false;
     if (curProject !== headerProject) {
       analytics.project = headerProject;
+      changed = true;
+    }
+    if (curMachine !== headerMachine) {
+      analytics.machine = headerMachine;
       changed = true;
     }
     if (curAgent !== headerAgent) {

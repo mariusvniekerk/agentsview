@@ -68,6 +68,7 @@ class AnalyticsStore {
   metric: HeatmapMetric = $state("messages");
   selectedDate: string | null = $state(null);
   project: string = $state("");
+  machine: string = $state("");
   agent: string = $state("");
   minUserMessages: number = $state(0);
   includeOneShot: boolean = $state(true);
@@ -135,6 +136,7 @@ class AnalyticsStore {
     return (
       this.selectedDate !== null ||
       this.project !== "" ||
+      this.machine !== "" ||
       this.agent !== "" ||
       this.minUserMessages > 0 ||
       !this.includeOneShot ||
@@ -148,6 +150,7 @@ class AnalyticsStore {
   clearAllFilters() {
     this.selectedDate = null;
     this.project = "";
+    this.machine = "";
     this.agent = "";
     this.minUserMessages = 0;
     this.includeOneShot = true;
@@ -156,6 +159,7 @@ class AnalyticsStore {
     this.selectedDow = null;
     this.selectedHour = null;
     sessions.filters.project = "";
+    sessions.filters.machine = "";
     sessions.filters.agent = "";
     sessions.filters.minUserMessages = 0;
     sessions.filters.includeOneShot = true;
@@ -243,6 +247,23 @@ class AnalyticsStore {
     this.fetchAll();
   }
 
+  clearMachine() {
+    this.machine = "";
+    sessions.filters.machine = "";
+    sessions.activeSessionId = null;
+    sessions.load();
+    this.fetchAll();
+  }
+
+  removeMachine(machine: string) {
+    const current = this.machine ? this.machine.split(",") : [];
+    this.machine = current.filter((m) => m !== machine).join(",");
+    sessions.filters.machine = this.machine;
+    sessions.activeSessionId = null;
+    sessions.load();
+    this.fetchAll();
+  }
+
   clearTimeFilter() {
     this.selectedDow = null;
     this.selectedHour = null;
@@ -273,6 +294,7 @@ class AnalyticsStore {
     if (includeProject && this.project) {
       p.project = this.project;
     }
+    if (this.machine) p.machine = this.machine;
     if (this.agent) p.agent = this.agent;
     if (this.minUserMessages > 0) {
       p.min_user_messages = this.minUserMessages;
@@ -314,6 +336,7 @@ class AnalyticsStore {
       if (includeProject && this.project) {
         p.project = this.project;
       }
+      if (this.machine) p.machine = this.machine;
       if (this.agent) p.agent = this.agent;
       if (this.minUserMessages > 0) {
         p.min_user_messages = this.minUserMessages;

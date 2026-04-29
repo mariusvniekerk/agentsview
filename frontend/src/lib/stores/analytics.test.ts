@@ -175,6 +175,7 @@ async function loadAnalyticsStore() {
 function resetStore() {
   analytics.selectedDate = null;
   analytics.project = "";
+  analytics.machine = "";
   analytics.from = "2024-01-01";
   analytics.to = "2024-01-31";
   analytics.isPinned = false;
@@ -465,6 +466,30 @@ describe("AnalyticsStore.setProject", () => {
       expect(params?.project).toBeUndefined();
     },
   );
+});
+
+describe("AnalyticsStore machine filter", () => {
+  it.each([
+    { name: "summary", fn: () => api.getAnalyticsSummary },
+    { name: "activity", fn: () => api.getAnalyticsActivity },
+    { name: "heatmap", fn: () => api.getAnalyticsHeatmap },
+    { name: "projects", fn: () => api.getAnalyticsProjects },
+    { name: "hourOfWeek", fn: () => api.getAnalyticsHourOfWeek },
+    { name: "sessionShape", fn: () => api.getAnalyticsSessionShape },
+    { name: "velocity", fn: () => api.getAnalyticsVelocity },
+    { name: "tools", fn: () => api.getAnalyticsTools },
+    { name: "topSessions", fn: () => api.getAnalyticsTopSessions },
+    { name: "signals", fn: () => api.getAnalyticsSignals },
+  ])("should include machine in $name params", ({ fn }) => {
+    analytics.machine = "host-a,host-b";
+
+    analytics.fetchAll();
+
+    const mock = vi.mocked(fn());
+    expect(mock).toHaveBeenCalled();
+    const params = mock.mock.lastCall?.[0];
+    expect(params?.machine).toBe("host-a,host-b");
+  });
 });
 
 describe("executeFetch concurrency and error handling", () => {

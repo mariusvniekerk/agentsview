@@ -7,6 +7,11 @@
       ? analytics.agent.split(",")
       : [],
   );
+  const selectedMachines = $derived(
+    analytics.machine
+      ? analytics.machine.split(",")
+      : [],
+  );
 
   const DAY_LABELS = [
     "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun",
@@ -43,6 +48,7 @@
   const filterCount = $derived(
     (analytics.selectedDate !== null ? 1 : 0) +
     (analytics.project !== "" ? 1 : 0) +
+    selectedMachines.length +
     selectedAgents.length +
     (analytics.minUserMessages > 0 ? 1 : 0) +
     (!analytics.includeOneShot ? 1 : 0) +
@@ -97,6 +103,28 @@
         <span class="chip-x">&times;</span>
       </button>
     {/if}
+
+    {#each selectedMachines as machine (machine)}
+      <button
+        class="filter-chip"
+        onclick={() => analytics.removeMachine(machine)}
+        title="Remove {machine} filter"
+      >
+        <span class="chip-icon">
+          <svg width="10" height="10" viewBox="0 0 16 16"
+            fill="currentColor">
+            <path d="M2 3.5A1.5 1.5 0 013.5 2h9A1.5 1.5 0
+              0114 3.5v5A1.5 1.5 0 0112.5 10H9v2h2.5a.5.5
+              0 010 1h-7a.5.5 0 010-1H7v-2H3.5A1.5 1.5
+              0 012 8.5v-5zM3.5 3a.5.5 0 00-.5.5v5a.5.5
+              0 00.5.5h9a.5.5 0 00.5-.5v-5a.5.5 0
+              00-.5-.5h-9z"/>
+          </svg>
+        </span>
+        {machine}
+        <span class="chip-x">&times;</span>
+      </button>
+    {/each}
 
     {#each selectedAgents as agent (agent)}
       <button
