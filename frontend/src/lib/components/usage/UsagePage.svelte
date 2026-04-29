@@ -35,12 +35,8 @@
   );
 
   // Track every model we've seen in any summary response or
-  // excluded-model filter — never remove one. This keeps the model
-  // dropdown usable even when landing on a shared URL like
-  // /usage?exclude_model=claude-opus, which would otherwise never
-  // show that model in the dropdown (it's filtered out of
-  // modelTotals on every response) and leave the user unable to
-  // re-include it.
+  // model filter — never remove one. This keeps the model
+  // dropdown usable when landing on a shared filtered URL.
   let knownModels: string[] = $state([]);
 
   function mergeIntoKnownModels(names: string[]): void {
@@ -65,23 +61,23 @@
     untrack(() => mergeIntoKnownModels(fromSummary));
   });
 
-  // Seed from the excluded-model filter so a shared URL like
-  // /usage?exclude_model=foo shows "foo" in the dropdown on first
-  // load, letting the user re-include it without clearing first.
+  // Seed from URL/local model filters before a response arrives.
   $effect(() => {
-    const excluded = usage.excludedModels;
+    const filtered = [
+      usage.selectedModels,
+    ].filter(Boolean).join(",");
     untrack(() => {
-      if (!excluded) return;
-      mergeIntoKnownModels(excluded.split(","));
+      if (!filtered) return;
+      mergeIntoKnownModels(filtered.split(","));
     });
   });
 
   const modelItems = $derived(
     knownModels.map((m) => ({ name: m })),
   );
-  const hiddenModels = $derived(
-    usage.excludedModels
-      ? usage.excludedModels.split(",").filter(Boolean)
+  const selectedModels = $derived(
+    usage.selectedModels
+      ? usage.selectedModels.split(",").filter(Boolean)
       : [],
   );
   const sessionUrlParams = $derived(
@@ -97,7 +93,7 @@
   // apply params that are actually present in the URL.
   const USAGE_FILTER_KEYS = new Set([
     "from", "to", "window_days",
-    "exclude_model",
+    "model", "exclude_model",
   ]);
   const SESSION_FILTER_KEYS = new Set([
     "project", "machine", "agent",
@@ -180,9 +176,14 @@
         usage.excludedProjects = newExProject;
         changed = true;
       }
-      const newExModel = params["exclude_model"] ?? "";
-      if (newExModel !== usage.excludedModels) {
-        usage.excludedModels = newExModel;
+      if (usage.excludedModels) {
+        usage.excludedModels = "";
+        changed = true;
+      }
+      const newModel = params["model"] ?? "";
+      if (newModel !== usage.selectedModels) {
+        usage.selectedModels = newModel;
+        if (newModel) usage.excludedModels = "";
         changed = true;
       }
       if ((changed || sessionChanged) && urlInitRan) {
@@ -203,6 +204,7 @@
       excludedProjects: usage.excludedProjects,
       excludedAgents: usage.excludedAgents,
       excludedModels: usage.excludedModels,
+      selectedModels: usage.selectedModels,
     };
     const nextParams = {
       ...buildUsageUrlParams(state),
@@ -287,7 +289,8 @@
       <FilterDropdown
         label="Model"
         items={modelItems}
-        excludedCsv={usage.excludedModels}
+        excludedCsv={usage.selectedModels}
+        mode="include"
         onToggle={(name) => usage.toggleModel(name)}
         onSelectAll={() => usage.selectAllModels()}
         onDeselectAll={() =>
@@ -314,7 +317,7 @@
   </div>
 
   <SessionActiveFilters
-    modelFilters={hiddenModels}
+    modelFilters={selectedModels}
     onClearProjects={() => usage.selectAllProjects()}
     onRemoveModel={(model) => usage.toggleModel(model)}
     onClearModels={() => usage.selectAllModels()}

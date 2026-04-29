@@ -100,6 +100,7 @@ export interface UsageFilterState {
   excludedProjects: string;
   excludedAgents: string;
   excludedModels: string;
+  selectedModels: string;
 }
 
 function loadUsageFilters(): UsageFilterState {
@@ -110,13 +111,19 @@ function loadUsageFilters(): UsageFilterState {
       return {
         excludedProjects: saved.excludedProjects ?? "",
         excludedAgents: saved.excludedAgents ?? "",
-        excludedModels: saved.excludedModels ?? "",
+        excludedModels: "",
+        selectedModels: saved.selectedModels ?? "",
       };
     }
   } catch {
     // Corrupted localStorage — fall back to defaults.
   }
-  return { excludedProjects: "", excludedAgents: "", excludedModels: "" };
+  return {
+    excludedProjects: "",
+    excludedAgents: "",
+    excludedModels: "",
+    selectedModels: "",
+  };
 }
 
 function saveUsageFilters(f: UsageFilterState): void {
@@ -125,6 +132,7 @@ function saveUsageFilters(f: UsageFilterState): void {
       excludedProjects: f.excludedProjects,
       excludedAgents: f.excludedAgents,
       excludedModels: f.excludedModels,
+      selectedModels: f.selectedModels,
     };
     localStorage.setItem(USAGE_FILTERS_KEY, JSON.stringify(data));
   } catch {
@@ -154,21 +162,20 @@ class UsageStore {
   isPinned: boolean = $state(false);
   windowDays: number = $state(DEFAULT_WINDOW_DAYS);
 
-  // Excluded items (comma-separated strings). Default is
-  // empty = nothing excluded = show all. The UI shows all items
-  // as checked; clicking one unchecks it (excludes it).
-  // Sent directly to the backend as exclude_project / exclude_agent
-  // / exclude_model query params (NOT IN filtering).
+  // Excluded project items and included model items
+  // (comma-separated strings). Empty models = all models.
   // Initialized from localStorage to survive tab switches.
   excludedProjects: string = $state("");
   excludedAgents: string = $state("");
   excludedModels: string = $state("");
+  selectedModels: string = $state("");
 
   constructor() {
     const saved = loadUsageFilters();
     this.excludedProjects = saved.excludedProjects;
     this.excludedAgents = saved.excludedAgents;
     this.excludedModels = saved.excludedModels;
+    this.selectedModels = saved.selectedModels;
   }
 
   summary = $state<UsageSummaryResponse | null>(null);
@@ -224,8 +231,8 @@ class UsageStore {
     } else if (this.excludedProjects) {
       p.exclude_project = this.excludedProjects;
     }
-    if (this.excludedModels) {
-      p.exclude_model = this.excludedModels;
+    if (this.selectedModels) {
+      p.model = this.selectedModels;
     }
     return p;
   }
@@ -261,9 +268,10 @@ class UsageStore {
   }
 
   toggleModel(name: string): void {
-    this.excludedModels = this.toggleCsv(
-      this.excludedModels, name,
+    this.selectedModels = this.toggleCsv(
+      this.selectedModels, name,
     );
+    this.excludedModels = "";
     this.fetchAll();
   }
 
@@ -295,6 +303,11 @@ class UsageStore {
     return this.excludedModels.split(",").includes(name);
   }
 
+  isModelSelected(name: string): boolean {
+    if (!this.selectedModels) return false;
+    return this.selectedModels.split(",").includes(name);
+  }
+
   selectAllProjects(): void {
     this.excludedProjects = "";
     this.fetchAll();
@@ -316,12 +329,14 @@ class UsageStore {
   }
 
   selectAllModels(): void {
+    this.selectedModels = "";
     this.excludedModels = "";
     this.fetchAll();
   }
 
-  deselectAllModels(all: string[]): void {
-    this.excludedModels = all.join(",");
+  deselectAllModels(_all: string[]): void {
+    this.selectedModels = "";
+    this.excludedModels = "";
     this.fetchAll();
   }
 
@@ -329,11 +344,12 @@ class UsageStore {
     this.excludedProjects = "";
     this.excludedAgents = "";
     this.excludedModels = "";
+    this.selectedModels = "";
     this.fetchAll();
   }
 
   get hasActiveFilters(): boolean {
-    return this.excludedProjects !== "" || this.excludedModels !== "";
+    return this.excludedProjects !== "" || this.selectedModels !== "";
   }
 
   setTimeSeriesGroupBy(g: GroupBy) {
@@ -446,6 +462,7 @@ export interface UsageUrlState {
   excludedProjects: string;
   excludedAgents: string;
   excludedModels: string;
+  selectedModels: string;
 }
 
 export const USAGE_DEFAULT_WINDOW_DAYS = DEFAULT_WINDOW_DAYS;
@@ -477,8 +494,8 @@ export function buildUsageUrlParams(
   ) {
     params["window_days"] = String(state.windowDays);
   }
-  if (state.excludedModels) {
-    params["exclude_model"] = state.excludedModels;
+  if (state.selectedModels) {
+    params["model"] = state.selectedModels;
   }
   if (state.excludedProjects) {
     params["exclude_project"] = state.excludedProjects;

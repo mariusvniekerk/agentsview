@@ -89,17 +89,19 @@ describe("UsageStore filter persistence", () => {
     expect(saved.excludedAgents).toBe("claude");
   });
 
-  it("restores exclude filters from localStorage on load", async () => {
+  it("restores usage filters from localStorage on load", async () => {
     localStorage.setItem(
       "usage-filters",
       JSON.stringify({
         excludedProjects: "saved-proj",
         excludedModels: "opus",
+        selectedModels: "sonnet",
       }),
     );
     const { usage } = await loadStore();
     expect(usage.excludedProjects).toBe("saved-proj");
-    expect(usage.excludedModels).toBe("opus");
+    expect(usage.excludedModels).toBe("");
+    expect(usage.selectedModels).toBe("sonnet");
     expect(usage.excludedAgents).toBe("");
   });
 
@@ -296,10 +298,11 @@ describe("buildUsageUrlParams", () => {
       excludedProjects: "p1",
       excludedAgents: "a1",
       excludedModels: "m1",
+      selectedModels: "m2",
     });
     expect(params).toEqual({
       exclude_project: "p1",
-      exclude_model: "m1",
+      model: "m2",
     });
   });
 
@@ -313,6 +316,7 @@ describe("buildUsageUrlParams", () => {
       excludedProjects: "",
       excludedAgents: "",
       excludedModels: "",
+      selectedModels: "",
     });
     expect(params).toEqual({
       from: "2026-01-01",
@@ -330,6 +334,7 @@ describe("buildUsageUrlParams", () => {
       excludedProjects: "",
       excludedAgents: "",
       excludedModels: "",
+      selectedModels: "",
     });
     expect(params).toEqual({});
   });
@@ -344,6 +349,7 @@ describe("buildUsageUrlParams", () => {
       excludedProjects: "",
       excludedAgents: "",
       excludedModels: "",
+      selectedModels: "",
     });
     expect(params).toEqual({});
   });
@@ -358,6 +364,7 @@ describe("buildUsageUrlParams", () => {
       excludedProjects: "",
       excludedAgents: "",
       excludedModels: "",
+      selectedModels: "",
     });
     expect(params).toEqual({ window_days: "7" });
   });
@@ -372,6 +379,7 @@ describe("buildUsageUrlParams", () => {
       excludedProjects: "",
       excludedAgents: "",
       excludedModels: "",
+      selectedModels: "",
     });
     expect(params).toEqual({
       from: "2026-01-01",

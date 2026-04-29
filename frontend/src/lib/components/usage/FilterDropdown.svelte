@@ -15,6 +15,7 @@
     onSelectAll?: () => void;
     onDeselectAll?: () => void;
     color?: (name: string) => string;
+    mode?: "exclude" | "include";
   }
 
   let {
@@ -25,26 +26,31 @@
     onSelectAll,
     onDeselectAll,
     color,
+    mode = "exclude",
   }: Props = $props();
 
   let open = $state(false);
   let search = $state("");
   let containerEl: HTMLDivElement | undefined = $state();
 
-  const excludedSet = $derived(
+  const filterSet = $derived(
     new Set(excludedCsv ? excludedCsv.split(",") : []),
   );
 
-  const excludedCount = $derived(excludedSet.size);
+  const filteredCount = $derived(filterSet.size);
   const visibleCount = $derived(
-    items.length - excludedCount,
+    items.length - filteredCount,
   );
 
   const buttonLabel = $derived.by(() => {
-    if (excludedCount === 0) return `${label}: All`;
+    if (filteredCount === 0) return `${label}: All`;
+    if (mode === "include") {
+      if (filteredCount === 1) return `${label}: ${excludedCsv}`;
+      return `${label}: ${filteredCount} selected`;
+    }
     if (visibleCount === 1) {
       const visible = items.find(
-        (i) => !excludedSet.has(i.name),
+        (i) => !filterSet.has(i.name),
       );
       if (visible) {
         const maxLen = 20;
@@ -55,7 +61,7 @@
       }
     }
     if (visibleCount === 0) return `${label}: None`;
-    return `${label}: ${excludedCount} hidden`;
+    return `${label}: ${filteredCount} hidden`;
   });
 
   const showSearch = $derived(items.length > 8);
@@ -104,7 +110,7 @@
 <div class="filter-dropdown" bind:this={containerEl}>
   <button
     class="filter-trigger"
-    class:active={excludedCount > 0}
+    class:active={filteredCount > 0}
     onclick={() => {
       open = !open;
       if (!open) search = "";
@@ -133,19 +139,55 @@
           bind:value={search}
         />
       {/if}
-      <div class="bulk-actions">
-        <button
-          class="bulk-btn"
-          onclick={() => onSelectAll?.()}
-        >Select all</button>
-        <button
-          class="bulk-btn"
-          onclick={() => onDeselectAll?.()}
-        >Deselect all</button>
-      </div>
+      {#if mode === "exclude"}
+        <div class="bulk-actions">
+          <button
+            class="bulk-btn"
+            onclick={() => onSelectAll?.()}
+          >Select all</button>
+          <button
+            class="bulk-btn"
+            onclick={() => onDeselectAll?.()}
+          >Deselect all</button>
+        </div>
+      {/if}
       <div class="dropdown-list">
+        {#if mode === "include"}
+          <button
+            class="dropdown-row"
+            class:selected={filteredCount === 0}
+            style:--item-color={"var(--accent-blue)"}
+            onclick={() => onSelectAll?.()}
+          >
+            <span
+              class="item-check"
+              class:on={filteredCount === 0}
+            >
+              {#if filteredCount === 0}
+                <svg
+                  width="8"
+                  height="8"
+                  viewBox="0 0 8 8"
+                  fill="currentColor"
+                >
+                  <path
+                    d="M1.5 4L3.2 5.8L6.5 2.2"
+                    fill="none"
+                    stroke="white"
+                    stroke-width="1.2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              {/if}
+            </span>
+            <span class="item-name">All {label.toLowerCase()}s</span>
+          </button>
+        {/if}
         {#each filtered as item (item.name)}
-          {@const included = !excludedSet.has(item.name)}
+          {@const included = mode === "include"
+            ? filterSet.has(item.name)
+            : !filterSet.has(item.name)}
           <button
             class="dropdown-row"
             class:selected={included}
