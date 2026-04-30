@@ -116,7 +116,7 @@ func parseUsageFilter(
 		return db.UsageFilter{}, false
 	}
 
-	includeOneShot := q.Get("include_one_shot") == "true"
+	includeOneShot := q.Get("include_one_shot") != "false"
 	includeAutomated := q.Get("include_automated") == "true"
 
 	return db.UsageFilter{

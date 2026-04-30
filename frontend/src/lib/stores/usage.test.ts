@@ -388,6 +388,29 @@ describe("buildUsageUrlParams", () => {
   });
 });
 
+describe("mergeUsageAndSessionUrlParams", () => {
+  it("merges overlapping CSV params instead of overwriting usage filters", async () => {
+    const { mergeUsageAndSessionUrlParams } = await loadStore();
+
+    expect(
+      mergeUsageAndSessionUrlParams(
+        {
+          exclude_project: "alpha,beta",
+          model: "gpt-5.5",
+        },
+        {
+          exclude_project: "unknown,beta",
+          machine: "host-a",
+        },
+      ),
+    ).toEqual({
+      exclude_project: "alpha,beta,unknown",
+      model: "gpt-5.5",
+      machine: "host-a",
+    });
+  });
+});
+
 describe("parseWindowDays", () => {
   it("returns the parsed integer for valid positive integers", async () => {
     const { parseWindowDays } = await loadStore();

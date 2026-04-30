@@ -3,6 +3,7 @@
   import {
     usage,
     buildUsageUrlParams,
+    mergeUsageAndSessionUrlParams,
     parseWindowDays,
   } from "../../stores/usage.svelte.js";
   import {
@@ -206,10 +207,10 @@
       excludedModels: usage.excludedModels,
       selectedModels: usage.selectedModels,
     };
-    const nextParams = {
-      ...buildUsageUrlParams(state),
-      ...sessionUrlParams,
-    };
+    const nextParams = mergeUsageAndSessionUrlParams(
+      buildUsageUrlParams(state),
+      sessionUrlParams,
+    );
     const ready = urlInitRan && urlWritebackReady;
     untrack(() => {
       if (!ready || router.route !== "usage") return;

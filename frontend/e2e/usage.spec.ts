@@ -13,8 +13,8 @@ test.describe("Usage page", () => {
     page,
   }) => {
     await expect(
-      page.locator(".page-title"),
-    ).toContainText("Usage");
+      page.locator(".usage-toolbar").first(),
+    ).toBeVisible();
 
     // Summary cards should appear with at least one value.
     await expect(
@@ -95,10 +95,14 @@ test.describe("Usage page", () => {
       .locator(".filter-dropdown .filter-trigger")
       .first();
     await trigger.click();
-    await page.locator(".dropdown-row").first().click();
+    await page
+      .locator(".dropdown-row")
+      .filter({ hasText: "project-delta" })
+      .first()
+      .click();
 
-    // Close dropdown by clicking the page title.
-    await page.locator(".page-title").click();
+    // Close dropdown by clicking outside the menu.
+    await page.mouse.click(10, 10);
 
     // Total cost should change after refetch.
     await expect(async () => {
@@ -165,8 +169,12 @@ test.describe("Usage page", () => {
       .locator(".filter-dropdown .filter-trigger")
       .first();
     await trigger.click();
-    await page.locator(".dropdown-row").first().click();
-    await page.locator(".page-title").click();
+    await page
+      .locator(".dropdown-row")
+      .filter({ hasText: "project-delta" })
+      .first()
+      .click();
+    await page.mouse.click(10, 10);
 
     // URL should contain the exclude_project param.
     await expect(page).toHaveURL(/exclude_project=/);

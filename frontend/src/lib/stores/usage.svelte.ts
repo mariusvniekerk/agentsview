@@ -502,3 +502,20 @@ export function buildUsageUrlParams(
   }
   return params;
 }
+
+const CSV_MERGE_URL_KEYS = new Set(["exclude_project"]);
+
+export function mergeUsageAndSessionUrlParams(
+  usageParams: Record<string, string>,
+  sessionParams: Record<string, string>,
+): Record<string, string> {
+  const params = { ...usageParams };
+  for (const [key, value] of Object.entries(sessionParams)) {
+    if (CSV_MERGE_URL_KEYS.has(key) && params[key]) {
+      params[key] = joinCsvParts(params[key], value);
+    } else {
+      params[key] = value;
+    }
+  }
+  return params;
+}
