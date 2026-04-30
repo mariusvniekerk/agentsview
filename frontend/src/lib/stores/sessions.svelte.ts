@@ -100,6 +100,32 @@ export function filtersToParams(
   return p;
 }
 
+export function splitExcludeProjectParam(
+  raw: string | undefined,
+): {
+  hideUnknownProject: boolean;
+  usageExcludedProjects: string;
+} {
+  const projects: string[] = [];
+  const seen = new Set<string>();
+  let hideUnknownProject = false;
+  for (const value of (raw ?? "").split(",")) {
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    if (trimmed === "unknown") {
+      hideUnknownProject = true;
+      continue;
+    }
+    if (seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    projects.push(trimmed);
+  }
+  return {
+    hideUnknownProject,
+    usageExcludedProjects: projects.join(","),
+  };
+}
+
 /** Parse URL query params into a typed Filters object.
  *  Unknown/missing params fall back to defaults. */
 export function parseFiltersFromParams(
@@ -109,7 +135,8 @@ export function parseFiltersFromParams(
   const maxMsgs = parseInt(params["max_messages"] ?? "", 10);
   const minUserMsgs = parseInt(params["min_user_messages"] ?? "", 10);
 
-  const hideUnknown = params["exclude_project"] === "unknown";
+  const { hideUnknownProject: hideUnknown } =
+    splitExcludeProjectParam(params["exclude_project"]);
   let project = params["project"] ?? "";
   if (hideUnknown && project === "unknown") {
     project = "";

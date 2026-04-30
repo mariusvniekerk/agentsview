@@ -10,6 +10,7 @@ import {
   buildSessionGroups,
   parseFiltersFromParams,
   filtersToParams,
+  splitExcludeProjectParam,
 } from "./sessions.svelte.js";
 import type { Filters } from "./sessions.svelte.js";
 import type { Session } from "../api/types.js";
@@ -212,6 +213,13 @@ describe("SessionsStore", () => {
         exclude_project: "unknown",
       });
       expect(f.project).toBe("");
+      expect(f.hideUnknownProject).toBe(true);
+    });
+
+    it("should set hideUnknown from CSV exclude_project values", () => {
+      const f = parseFiltersFromParams({
+        exclude_project: "alpha,unknown",
+      });
       expect(f.hideUnknownProject).toBe(true);
     });
 
@@ -711,6 +719,15 @@ describe("SessionsStore", () => {
       });
       expect(sessions.filters.project).toBe("");
       expect(sessions.filters.hideUnknownProject).toBe(true);
+    });
+
+    it("should split hide-unknown from usage project exclusions", () => {
+      expect(
+        splitExcludeProjectParam("alpha,unknown,beta"),
+      ).toEqual({
+        hideUnknownProject: true,
+        usageExcludedProjects: "alpha,beta",
+      });
     });
 
     it("should be included in hasActiveFilters", () => {

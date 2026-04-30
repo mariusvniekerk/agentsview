@@ -10,6 +10,7 @@
     sessions,
     filtersToParams,
     parseFiltersFromParams,
+    splitExcludeProjectParam,
   } from "../../stores/sessions.svelte.js";
   import { router } from "../../stores/router.svelte.js";
   import { events } from "../../stores/events.svelte.js";
@@ -172,7 +173,9 @@
         usage.to = params["to"];
         changed = true;
       }
-      const newExProject = params["exclude_project"] ?? "";
+      const newExProject = splitExcludeProjectParam(
+        params["exclude_project"],
+      ).usageExcludedProjects;
       if (newExProject !== usage.excludedProjects) {
         usage.excludedProjects = newExProject;
         changed = true;
