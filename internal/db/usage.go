@@ -24,7 +24,7 @@ type UsageFilter struct {
 	ExcludeModel     string // comma-separated models to exclude
 	Timezone         string // IANA timezone, "" for UTC
 	MinUserMessages  int    // user_message_count >= N
-	ExcludeOneShot   bool   // message_count > 1
+	ExcludeOneShot   bool   // user_message_count > 1
 	ExcludeAutomated bool   // is_automated = false
 	ActiveSince      string // RFC3339 session recency cutoff
 	Breakdowns       bool   // populate Project/AgentBreakdowns per day
@@ -90,7 +90,7 @@ func (f UsageFilter) appendFilterClauses(
 		args = append(args, f.MinUserMessages)
 	}
 	if f.ExcludeOneShot {
-		query += " AND s.message_count > 1"
+		query += " AND s.user_message_count > 1"
 	}
 	if f.ExcludeAutomated {
 		query += " AND COALESCE(s.is_automated, 0) = 0"

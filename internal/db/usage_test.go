@@ -1835,6 +1835,74 @@ func TestUsageSessionFilters(t *testing.T) {
 	}
 }
 
+func TestUsageExcludeOneShotUsesUserMessageCount(t *testing.T) {
+	d := testDB(t)
+	ctx := context.Background()
+
+	requireNoError(t, d.UpsertModelPricing([]ModelPricing{{
+		ModelPattern:  "claude-sonnet",
+		InputPerMTok:  3.0,
+		OutputPerMTok: 15.0,
+	}}), "UpsertModelPricing")
+
+	tokenUsage := json.RawMessage(
+		`{"input_tokens":1000,"output_tokens":500}`,
+	)
+
+	insertSession(t, d, "usage-one-user-message", "proj", func(s *Session) {
+		s.Agent = "claude"
+		s.MessageCount = 2
+		s.UserMessageCount = 1
+		s.StartedAt = new("2024-06-15T10:00:00Z")
+	})
+	insertSession(t, d, "usage-two-user-messages", "proj", func(s *Session) {
+		s.Agent = "claude"
+		s.MessageCount = 3
+		s.UserMessageCount = 2
+		s.StartedAt = new("2024-06-15T10:00:00Z")
+	})
+
+	for _, sid := range []string{
+		"usage-one-user-message",
+		"usage-two-user-messages",
+	} {
+		insertMessages(t, d, Message{
+			SessionID:  sid,
+			Ordinal:    0,
+			Role:       "assistant",
+			Timestamp:  "2024-06-15T10:30:00Z",
+			Model:      "claude-sonnet",
+			TokenUsage: tokenUsage,
+		})
+	}
+
+	filter := UsageFilter{
+		From:           "2024-06-01",
+		To:             "2024-06-30",
+		ExcludeOneShot: true,
+	}
+
+	daily, err := d.GetDailyUsage(ctx, filter)
+	requireNoError(t, err, "GetDailyUsage exclude one-shot")
+	if daily.Totals.InputTokens != 1000 {
+		t.Errorf("InputTokens = %d, want 1000",
+			daily.Totals.InputTokens)
+	}
+
+	top, err := d.GetTopSessionsByCost(ctx, filter, 10)
+	requireNoError(t, err, "GetTopSessionsByCost exclude one-shot")
+	if len(top) != 1 || top[0].SessionID != "usage-two-user-messages" {
+		t.Fatalf("top sessions = %+v, want only usage-two-user-messages",
+			top)
+	}
+
+	counts, err := d.GetUsageSessionCounts(ctx, filter)
+	requireNoError(t, err, "GetUsageSessionCounts exclude one-shot")
+	if counts.Total != 1 {
+		t.Errorf("counts.Total = %d, want 1", counts.Total)
+	}
+}
+
 // TestExcludeAgentFilter verifies ExcludeAgent on GetDailyUsage.
 func TestExcludeAgentFilter(t *testing.T) {
 	d := testDB(t)

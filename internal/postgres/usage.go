@@ -79,7 +79,7 @@ func appendPGUsageFilterClauses(
 			pb.add(f.MinUserMessages)
 	}
 	if f.ExcludeOneShot {
-		query += " AND s.message_count > 1"
+		query += " AND s.user_message_count > 1"
 	}
 	if f.ExcludeAutomated {
 		query += " AND COALESCE(s.is_automated, false) = false"
