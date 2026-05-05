@@ -217,9 +217,10 @@ func TestParseCodexSession_FunctionCalls(t *testing.T) {
 		assert.Equal(t, 4, len(msgs))
 		assert.Equal(t, RoleAssistant, msgs[1].Role)
 		assertToolCalls(t, msgs[1].ToolCalls, []ParsedToolCall{{
-			ToolUseID: "call_spawn",
-			ToolName:  "spawn_agent",
-			Category:  "Task",
+			ToolUseID:         "call_spawn",
+			ToolName:          "spawn_agent",
+			Category:          "Task",
+			SubagentSessionID: "codex:" + childID,
 		}})
 		assert.Equal(t, RoleAssistant, msgs[2].Role)
 		assertToolCalls(t, msgs[2].ToolCalls, []ParsedToolCall{{
@@ -260,9 +261,10 @@ func TestParseCodexSession_FunctionCalls(t *testing.T) {
 		require.NotNil(t, sess)
 		assert.Equal(t, 2, len(msgs))
 		assertToolCalls(t, msgs[1].ToolCalls, []ParsedToolCall{{
-			ToolUseID: "call_spawn",
-			ToolName:  "spawn_agent",
-			Category:  "Task",
+			ToolUseID:         "call_spawn",
+			ToolName:          "spawn_agent",
+			Category:          "Task",
+			SubagentSessionID: "codex:" + childID,
 		}})
 		assertToolResultEvents(t, msgs[1].ToolCalls[0].ResultEvents, []ParsedToolResultEvent{{
 			ToolUseID:         "call_spawn",

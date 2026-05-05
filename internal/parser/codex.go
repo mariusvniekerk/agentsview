@@ -320,6 +320,7 @@ func (b *codexSessionBuilder) handleFunctionCallOutput(
 			return
 		}
 		b.agentSpawnCalls[agentID] = callID
+		b.setCallSubagentSessionID(callID, codexSubagentSessionID(agentID))
 	case "wait":
 		status := output.Get("status")
 		if !status.Exists() || !status.IsObject() {
@@ -343,6 +344,22 @@ func (b *codexSessionBuilder) handleFunctionCallOutput(
 			return true
 		})
 	}
+}
+
+func (b *codexSessionBuilder) setCallSubagentSessionID(
+	callID, sessionID string,
+) {
+	if callID == "" || sessionID == "" {
+		return
+	}
+	ref, ok := b.callRefs[callID]
+	if !ok || ref.messageIndex < 0 || ref.messageIndex >= len(b.messages) {
+		return
+	}
+	if ref.callIndex < 0 || ref.callIndex >= len(b.messages[ref.messageIndex].ToolCalls) {
+		return
+	}
+	b.messages[ref.messageIndex].ToolCalls[ref.callIndex].SubagentSessionID = sessionID
 }
 
 func (b *codexSessionBuilder) handleSubagentNotification(
