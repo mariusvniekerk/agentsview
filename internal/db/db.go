@@ -27,11 +27,16 @@ import (
 // trigger a non-destructive re-sync (mtime reset + skip cache
 // clear) so existing session data is preserved.
 //
-// Bumped to 23: split termination_status into awaiting_user vs
+// Bumped to 24: Codex parser now annotates spawn_agent tool calls
+// with subagent_session_id once the spawned agent id is known.
+// Existing rows need re-parsing so inline subagent expansion can
+// resolve child sessions from persisted tool call metadata.
+//
+// (23: split termination_status into awaiting_user vs
 // clean (Claude end_turn / Codex task_complete vs other clean
 // stops); Codex parser now classifies based on task lifecycle
 // events. Existing rows need re-parsing so the new awaiting_user
-// value populates correctly.
+// value populates correctly.)
 //
 // (22: added termination_status column to sessions; existing
 // rows need re-parsing so the Claude classifier can populate
@@ -58,7 +63,7 @@ import (
 //
 // (17: Codex <skill> template filtering.)
 // (16: <turn_aborted> system messages.)
-const dataVersion = 23
+const dataVersion = 24
 
 const tokenCoverageRepairStatsKey = "token_coverage_repair_v1"
 
