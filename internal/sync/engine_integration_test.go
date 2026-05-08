@@ -379,6 +379,471 @@ func TestSyncEngineWorktreeProjectWhenPathMissing(t *testing.T) {
 	assertSessionProject(t, env.db, "offline-worktree", "agentsview")
 }
 
+func TestSyncEngineAppliesWorktreeProjectMapping(t *testing.T) {
+	env := setupTestEnv(t)
+
+	if got := env.engine.Machine(); got != "local" {
+		t.Fatalf("engine machine = %q, want local", got)
+	}
+
+	root := t.TempDir()
+	worktreePrefix := filepath.Join(root, "my-app.worktrees")
+	sessionCwd := filepath.Join(worktreePrefix, "feature-login")
+	_, err := env.db.CreateWorktreeProjectMapping(
+		context.Background(),
+		db.WorktreeProjectMapping{
+			Machine:    "local",
+			PathPrefix: worktreePrefix,
+			Project:    "canonical-app",
+			Enabled:    true,
+		},
+	)
+	if err != nil {
+		t.Fatalf("CreateWorktreeProjectMapping: %v", err)
+	}
+
+	content := testjsonl.NewSessionBuilder().
+		AddClaudeUser(tsEarly, "Worktree mapped", sessionCwd).
+		AddClaudeAssistant(tsEarlyS5, "ok").
+		String()
+
+	env.writeClaudeSessionForProject(
+		t, sessionCwd,
+		"mapped-worktree.jsonl", content,
+	)
+
+	runSyncAndAssert(t, env.engine, sync.SyncStats{
+		TotalSessions: 1,
+		Synced:        1,
+		Skipped:       0,
+	})
+
+	assertSessionProject(
+		t, env.db, "mapped-worktree", "canonical_app",
+	)
+}
+
+func TestSyncSingleSessionAppliesWorktreeProjectMapping(t *testing.T) {
+	env := setupTestEnv(t)
+
+	root := t.TempDir()
+	worktreePrefix := filepath.Join(root, "my-app.worktrees")
+	sessionCwd := filepath.Join(worktreePrefix, "feature-login")
+	_, err := env.db.CreateWorktreeProjectMapping(
+		context.Background(),
+		db.WorktreeProjectMapping{
+			Machine:    "local",
+			PathPrefix: worktreePrefix,
+			Project:    "canonical-app",
+			Enabled:    true,
+		},
+	)
+	if err != nil {
+		t.Fatalf("CreateWorktreeProjectMapping: %v", err)
+	}
+
+	content := testjsonl.NewSessionBuilder().
+		AddClaudeUser(tsEarly, "Worktree mapped single", sessionCwd).
+		AddClaudeAssistant(tsEarlyS5, "ok").
+		String()
+
+	env.writeClaudeSessionForProject(
+		t, sessionCwd,
+		"mapped-worktree-single.jsonl", content,
+	)
+
+	if err := env.engine.SyncSingleSession(
+		"mapped-worktree-single",
+	); err != nil {
+		t.Fatalf("SyncSingleSession: %v", err)
+	}
+
+	assertSessionProject(
+		t, env.db, "mapped-worktree-single", "canonical_app",
+	)
+}
+
+func TestSyncSingleSessionSkippedClaudeAppliesWorktreeProjectMapping(
+	t *testing.T,
+) {
+	env := setupTestEnv(t)
+
+	root := t.TempDir()
+	worktreePrefix := filepath.Join(root, "my-app.worktrees")
+	sessionCwd := filepath.Join(worktreePrefix, "feature-login")
+	content := testjsonl.NewSessionBuilder().
+		AddClaudeUser(tsEarly, "Worktree mapped after initial sync", sessionCwd).
+		AddClaudeAssistant(tsEarlyS5, "ok").
+		String()
+
+	env.writeClaudeSessionForProject(
+		t, sessionCwd,
+		"mapped-worktree-single-skip.jsonl", content,
+	)
+
+	runSyncAndAssert(t, env.engine, sync.SyncStats{
+		TotalSessions: 1,
+		Synced:        1,
+		Skipped:       0,
+	})
+	before, err := env.db.GetSession(
+		context.Background(), "mapped-worktree-single-skip",
+	)
+	if err != nil {
+		t.Fatalf("GetSession before mapping: %v", err)
+	}
+	if before == nil {
+		t.Fatal("session missing before mapping")
+	}
+	if before.Project == "canonical_app" {
+		t.Fatalf("project before mapping = %q, want stale project", before.Project)
+	}
+	if before.LocalModifiedAt != nil {
+		t.Fatalf(
+			"local_modified_at before mapping = %v, want nil",
+			before.LocalModifiedAt,
+		)
+	}
+
+	_, err = env.db.CreateWorktreeProjectMapping(
+		context.Background(),
+		db.WorktreeProjectMapping{
+			Machine:    "local",
+			PathPrefix: worktreePrefix,
+			Project:    "canonical-app",
+			Enabled:    true,
+		},
+	)
+	if err != nil {
+		t.Fatalf("CreateWorktreeProjectMapping: %v", err)
+	}
+
+	if err := env.engine.SyncSingleSession(
+		"mapped-worktree-single-skip",
+	); err != nil {
+		t.Fatalf("SyncSingleSession: %v", err)
+	}
+
+	assertSessionProject(
+		t, env.db, "mapped-worktree-single-skip", "canonical_app",
+	)
+}
+
+func TestSyncAllSkippedClaudeAppliesWorktreeProjectMapping(
+	t *testing.T,
+) {
+	env := setupTestEnv(t)
+
+	root := t.TempDir()
+	worktreePrefix := filepath.Join(root, "my-app.worktrees")
+	sessionCwd := filepath.Join(worktreePrefix, "feature-login")
+	content := testjsonl.NewSessionBuilder().
+		AddClaudeUser(tsEarly, "Worktree mapped during normal skip", sessionCwd).
+		AddClaudeAssistant(tsEarlyS5, "ok").
+		String()
+
+	env.writeClaudeSessionForProject(
+		t, sessionCwd,
+		"mapped-worktree-syncall-skip.jsonl", content,
+	)
+
+	runSyncAndAssert(t, env.engine, sync.SyncStats{
+		TotalSessions: 1,
+		Synced:        1,
+		Skipped:       0,
+	})
+	before, err := env.db.GetSession(
+		context.Background(), "mapped-worktree-syncall-skip",
+	)
+	if err != nil {
+		t.Fatalf("GetSession before mapping: %v", err)
+	}
+	if before == nil {
+		t.Fatal("session missing before mapping")
+	}
+	if before.Project == "canonical_app" {
+		t.Fatalf("project before mapping = %q, want stale project", before.Project)
+	}
+	_, err = env.db.CreateWorktreeProjectMapping(
+		context.Background(),
+		db.WorktreeProjectMapping{
+			Machine:    "local",
+			PathPrefix: worktreePrefix,
+			Project:    "canonical-app",
+			Enabled:    true,
+		},
+	)
+	if err != nil {
+		t.Fatalf("CreateWorktreeProjectMapping: %v", err)
+	}
+
+	runSyncAndAssert(t, env.engine, sync.SyncStats{
+		TotalSessions: 1,
+		Synced:        0,
+		Skipped:       1,
+	})
+
+	assertSessionProject(
+		t, env.db, "mapped-worktree-syncall-skip", "canonical_app",
+	)
+}
+
+func TestSyncPathsSkippedClaudeAppliesWorktreeProjectMapping(
+	t *testing.T,
+) {
+	env := setupTestEnv(t)
+
+	root := t.TempDir()
+	worktreePrefix := filepath.Join(root, "my-app.worktrees")
+	sessionCwd := filepath.Join(worktreePrefix, "feature-login")
+	content := testjsonl.NewSessionBuilder().
+		AddClaudeUser(tsEarly, "Worktree mapped during path skip", sessionCwd).
+		AddClaudeAssistant(tsEarlyS5, "ok").
+		String()
+
+	path := env.writeClaudeSessionForProject(
+		t, sessionCwd,
+		"mapped-worktree-syncpaths-skip.jsonl", content,
+	)
+
+	runSyncAndAssert(t, env.engine, sync.SyncStats{
+		TotalSessions: 1,
+		Synced:        1,
+		Skipped:       0,
+	})
+	before, err := env.db.GetSession(
+		context.Background(), "mapped-worktree-syncpaths-skip",
+	)
+	if err != nil {
+		t.Fatalf("GetSession before mapping: %v", err)
+	}
+	if before == nil {
+		t.Fatal("session missing before mapping")
+	}
+	if before.Project == "canonical_app" {
+		t.Fatalf("project before mapping = %q, want stale project", before.Project)
+	}
+	beforeFull, err := env.db.GetSessionFull(
+		context.Background(), "mapped-worktree-syncpaths-skip",
+	)
+	if err != nil {
+		t.Fatalf("GetSessionFull before mapping: %v", err)
+	}
+
+	_, err = env.db.CreateWorktreeProjectMapping(
+		context.Background(),
+		db.WorktreeProjectMapping{
+			Machine:    "local",
+			PathPrefix: worktreePrefix,
+			Project:    "canonical-app",
+			Enabled:    true,
+		},
+	)
+	if err != nil {
+		t.Fatalf("CreateWorktreeProjectMapping: %v", err)
+	}
+
+	env.engine.SyncPaths([]string{path})
+
+	assertSessionProject(
+		t, env.db, "mapped-worktree-syncpaths-skip", "canonical_app",
+	)
+	after, err := env.db.GetSessionFull(
+		context.Background(), "mapped-worktree-syncpaths-skip",
+	)
+	if err != nil {
+		t.Fatalf("GetSessionFull after mapping: %v", err)
+	}
+	if testStringPtrValue(after.LocalModifiedAt) !=
+		testStringPtrValue(beforeFull.LocalModifiedAt) {
+		t.Fatalf(
+			"local_modified_at after skipped path sync = %v, want %v",
+			after.LocalModifiedAt,
+			beforeFull.LocalModifiedAt,
+		)
+	}
+}
+
+func TestSyncSingleSessionIncrementalAppliesWorktreeProjectMapping(
+	t *testing.T,
+) {
+	env := setupTestEnv(t)
+
+	root := t.TempDir()
+	worktreePrefix := filepath.Join(root, "my-app.worktrees")
+	sessionCwd := filepath.Join(worktreePrefix, "feature-login")
+	initial := testjsonl.NewSessionBuilder().
+		AddClaudeUser(tsEarly, "Worktree mapped after append", sessionCwd).
+		String()
+
+	path := env.writeClaudeSessionForProject(
+		t, sessionCwd,
+		"mapped-worktree-single-incremental.jsonl", initial,
+	)
+
+	runSyncAndAssert(t, env.engine, sync.SyncStats{
+		TotalSessions: 1,
+		Synced:        1,
+		Skipped:       0,
+	})
+	before, err := env.db.GetSession(
+		context.Background(), "mapped-worktree-single-incremental",
+	)
+	if err != nil {
+		t.Fatalf("GetSession before mapping: %v", err)
+	}
+	if before == nil {
+		t.Fatal("session missing before mapping")
+	}
+	if before.Project == "canonical_app" {
+		t.Fatalf("project before mapping = %q, want stale project", before.Project)
+	}
+	_, err = env.db.CreateWorktreeProjectMapping(
+		context.Background(),
+		db.WorktreeProjectMapping{
+			Machine:    "local",
+			PathPrefix: worktreePrefix,
+			Project:    "canonical-app",
+			Enabled:    true,
+		},
+	)
+	if err != nil {
+		t.Fatalf("CreateWorktreeProjectMapping: %v", err)
+	}
+
+	appended := initial + testjsonl.NewSessionBuilder().
+		AddClaudeAssistant(tsEarlyS5, "ok").
+		String()
+	if err := os.WriteFile(path, []byte(appended), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	if err := env.engine.SyncSingleSession(
+		"mapped-worktree-single-incremental",
+	); err != nil {
+		t.Fatalf("SyncSingleSession: %v", err)
+	}
+
+	assertSessionMessageCount(
+		t, env.db, "mapped-worktree-single-incremental", 2,
+	)
+	assertSessionProject(
+		t, env.db, "mapped-worktree-single-incremental", "canonical_app",
+	)
+}
+
+func TestSyncAllIncrementalAppliesWorktreeProjectMapping(
+	t *testing.T,
+) {
+	env := setupTestEnv(t)
+
+	root := t.TempDir()
+	worktreePrefix := filepath.Join(root, "my-app.worktrees")
+	sessionCwd := filepath.Join(worktreePrefix, "feature-login")
+	initial := testjsonl.NewSessionBuilder().
+		AddClaudeUser(tsEarly, "Worktree mapped during normal append", sessionCwd).
+		String()
+
+	path := env.writeClaudeSessionForProject(
+		t, sessionCwd,
+		"mapped-worktree-syncall-incremental.jsonl", initial,
+	)
+
+	runSyncAndAssert(t, env.engine, sync.SyncStats{
+		TotalSessions: 1,
+		Synced:        1,
+		Skipped:       0,
+	})
+	before, err := env.db.GetSession(
+		context.Background(), "mapped-worktree-syncall-incremental",
+	)
+	if err != nil {
+		t.Fatalf("GetSession before mapping: %v", err)
+	}
+	if before == nil {
+		t.Fatal("session missing before mapping")
+	}
+	if before.Project == "canonical_app" {
+		t.Fatalf("project before mapping = %q, want stale project", before.Project)
+	}
+	_, err = env.db.CreateWorktreeProjectMapping(
+		context.Background(),
+		db.WorktreeProjectMapping{
+			Machine:    "local",
+			PathPrefix: worktreePrefix,
+			Project:    "canonical-app",
+			Enabled:    true,
+		},
+	)
+	if err != nil {
+		t.Fatalf("CreateWorktreeProjectMapping: %v", err)
+	}
+
+	appended := initial + testjsonl.NewSessionBuilder().
+		AddClaudeAssistant(tsEarlyS5, "ok").
+		String()
+	if err := os.WriteFile(path, []byte(appended), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	runSyncAndAssert(t, env.engine, sync.SyncStats{
+		TotalSessions: 1,
+		Synced:        1,
+		Skipped:       0,
+	})
+
+	assertSessionMessageCount(
+		t, env.db, "mapped-worktree-syncall-incremental", 2,
+	)
+	assertSessionProject(
+		t, env.db, "mapped-worktree-syncall-incremental", "canonical_app",
+	)
+}
+
+func TestResyncAllAppliesWorktreeProjectMappingDuringBulkWrites(
+	t *testing.T,
+) {
+	env := setupTestEnv(t)
+
+	root := t.TempDir()
+	worktreePrefix := filepath.Join(root, "my-app.worktrees")
+	sessionCwd := filepath.Join(worktreePrefix, "feature-login")
+	_, err := env.db.CreateWorktreeProjectMapping(
+		context.Background(),
+		db.WorktreeProjectMapping{
+			Machine:    "local",
+			PathPrefix: worktreePrefix,
+			Project:    "canonical-app",
+			Enabled:    true,
+		},
+	)
+	if err != nil {
+		t.Fatalf("CreateWorktreeProjectMapping: %v", err)
+	}
+
+	content := testjsonl.NewSessionBuilder().
+		AddClaudeUser(tsEarly, "Worktree mapped by resync", sessionCwd).
+		AddClaudeAssistant(tsEarlyS5, "ok").
+		String()
+
+	env.writeClaudeSessionForProject(
+		t, sessionCwd,
+		"mapped-worktree-resync.jsonl", content,
+	)
+
+	stats := env.engine.ResyncAll(context.Background(), nil)
+	if stats.Aborted {
+		t.Fatalf("ResyncAll aborted: %+v", stats)
+	}
+	if stats.Synced != 1 {
+		t.Fatalf("ResyncAll synced = %d, want 1: %+v", stats.Synced, stats)
+	}
+
+	assertSessionProject(
+		t, env.db, "mapped-worktree-resync", "canonical_app",
+	)
+}
+
 func TestSyncEngineCodex(t *testing.T) {
 	env := setupTestEnv(t)
 
@@ -6535,4 +7000,11 @@ func TestIncrementalSync_ClaudeClearOnlyRepairedOnAppend(t *testing.T) {
 			updated.UserMessageCount,
 		)
 	}
+}
+
+func testStringPtrValue(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
 }

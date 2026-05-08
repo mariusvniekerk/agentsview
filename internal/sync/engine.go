@@ -242,6 +242,14 @@ func (e *Engine) LastSyncStats() SyncStats {
 	return e.lastSyncStats
 }
 
+// Machine returns the machine name this engine writes on sessions.
+func (e *Engine) Machine() string {
+	if e == nil {
+		return ""
+	}
+	return e.machine
+}
+
 type syncJob struct {
 	processResult
 	path string
@@ -1039,7 +1047,6 @@ func (e *Engine) ResyncAll(
 		trashedCopied = n
 		log.Printf("resync: pre-sync copied %d trashed sessions", n)
 	}
-
 	// The temp DB is not swapped into production until the end,
 	// so avoid per-row FTS trigger work during the bulk load and
 	// rebuild the index once all message rows are final.
@@ -1224,6 +1231,11 @@ func (e *Engine) ResyncAll(
 	if err := newDB.CopySessionMetadataFrom(origPath); err != nil {
 		log.Printf("resync: copy session metadata: %v", err)
 		// Non-fatal: worst case, renames/soft-deletes are lost.
+	}
+	if _, err := newDB.ApplyWorktreeProjectMappingsFromSync(
+		context.Background(), e.machine,
+	); err != nil {
+		log.Printf("resync: apply worktree mappings: %v", err)
 	}
 
 	// Reclassify is_automated across every row. Orphan-copied
@@ -1499,11 +1511,14 @@ func (e *Engine) syncAllLocked(
 				stats.RecordFailed()
 			}
 		} else {
+			resolveWorktreeProject := e.loadWorktreeProjectResolver()
 			for _, pw := range ocPending {
 				if ctx.Err() != nil {
 					break
 				}
-				switch err := e.writeSessionFull(pw); {
+				switch err := e.writeSessionFullWithResolver(
+					pw, resolveWorktreeProject,
+				); {
 				case err == nil:
 					ocWritten++
 				case isIntentionalSessionSkip(err),
@@ -1551,11 +1566,14 @@ func (e *Engine) syncAllLocked(
 				stats.RecordFailed()
 			}
 		} else {
+			resolveWorktreeProject := e.loadWorktreeProjectResolver()
 			for _, pw := range warpPending {
 				if ctx.Err() != nil {
 					break
 				}
-				switch err := e.writeSessionFull(pw); {
+				switch err := e.writeSessionFullWithResolver(
+					pw, resolveWorktreeProject,
+				); {
 				case err == nil:
 					warpWritten++
 				case isIntentionalSessionSkip(err),
@@ -1603,11 +1621,14 @@ func (e *Engine) syncAllLocked(
 				stats.RecordFailed()
 			}
 		} else {
+			resolveWorktreeProject := e.loadWorktreeProjectResolver()
 			for _, pw := range forgePending {
 				if ctx.Err() != nil {
 					break
 				}
-				switch err := e.writeSessionFull(pw); {
+				switch err := e.writeSessionFullWithResolver(
+					pw, resolveWorktreeProject,
+				); {
 				case err == nil:
 					forgeWritten++
 				case errors.Is(err, db.ErrSessionExcluded),
@@ -1917,6 +1938,7 @@ func (e *Engine) collectAndBatch(
 			continue
 		}
 		if r.skip {
+			e.applyWorktreeMappingToSkippedPath(r.path)
 			stats.RecordSkip()
 			progress.SessionsDone++
 			if onProgress != nil {
@@ -3405,6 +3427,45 @@ type pendingWrite struct {
 	forceReplace bool
 }
 
+type worktreeProjectResolver func(
+	machine, cwd, currentProject string,
+) (string, bool)
+
+func (e *Engine) loadWorktreeProjectResolver() worktreeProjectResolver {
+	cache := map[string][]db.WorktreeProjectMapping{}
+	failed := map[string]bool{}
+	return func(machine, cwd, currentProject string) (string, bool) {
+		if machine == "" {
+			return currentProject, false
+		}
+		mappings, ok := cache[machine]
+		if !ok {
+			if failed[machine] {
+				return currentProject, false
+			}
+			var err error
+			mappings, err = e.db.ListActiveWorktreeProjectMappings(
+				context.Background(), machine,
+			)
+			if err != nil {
+				log.Printf(
+					"load worktree project mappings for machine %s: %v",
+					machine, err,
+				)
+				failed[machine] = true
+				return currentProject, false
+			}
+			cache[machine] = mappings
+		}
+		if len(mappings) == 0 {
+			return currentProject, false
+		}
+		return db.ResolveWorktreeProjectFromSortedMappings(
+			mappings, cwd, currentProject,
+		)
+	}
+}
+
 func (e *Engine) writeBatch(
 	batch []pendingWrite,
 	writeMode syncWriteMode,
@@ -3414,8 +3475,11 @@ func (e *Engine) writeBatch(
 		return e.writeBatchBulk(batch, forceReplace)
 	}
 
+	resolveWorktreeProject := e.loadWorktreeProjectResolver()
 	for _, pw := range batch {
-		s, msgs, ok := e.prepareSessionWrite(pw)
+		s, msgs, ok := e.prepareSessionWrite(
+			pw, resolveWorktreeProject,
+		)
 		if !ok {
 			continue
 		}
@@ -3501,12 +3565,20 @@ func (e *Engine) writeBatch(
 
 func (e *Engine) prepareSessionWrite(
 	pw pendingWrite,
+	resolveWorktreeProject worktreeProjectResolver,
 ) (db.Session, []db.Message, bool) {
 	msgs := toDBMessages(pw, e.blockedResultCategories)
 	s := toDBSession(pw)
 	s.MessageCount, s.UserMessageCount =
 		postFilterCounts(msgs)
 	e.applyRemoteRewrites(&s, msgs)
+	if s.Cwd != "" && resolveWorktreeProject != nil {
+		if mapped, ok := resolveWorktreeProject(
+			s.Machine, s.Cwd, s.Project,
+		); ok {
+			s.Project = mapped
+		}
+	}
 	s.IsAutomated = isAutomatedFromSession(s)
 
 	if e.shouldPreserveOpenCodeArchive(
@@ -3528,9 +3600,12 @@ func (e *Engine) writeBatchBulk(
 ) (writtenSessions, writtenMessages, failedSessions int) {
 	writes := make([]db.SessionBatchWrite, 0, len(batch))
 	sources := make(map[string]batchSourceFile, len(batch))
+	resolveWorktreeProject := e.loadWorktreeProjectResolver()
 
 	for _, pw := range batch {
-		s, msgs, ok := e.prepareSessionWrite(pw)
+		s, msgs, ok := e.prepareSessionWrite(
+			pw, resolveWorktreeProject,
+		)
 		if !ok {
 			continue
 		}
@@ -3624,6 +3699,12 @@ func (e *Engine) writeIncremental(
 		)
 	}
 
+	if err := e.applyWorktreeMappingToSingleSession(
+		inc.sessionID,
+	); err != nil {
+		return err
+	}
+
 	// Errors here are already logged by recomputeSignalsFromDB
 	// and are non-fatal for incremental sync; the next
 	// incremental write will retry.
@@ -3686,16 +3767,18 @@ func (e *Engine) writeMessages(
 // sentinel for intentional skips, or another error for real
 // failures.
 func (e *Engine) writeSessionFull(pw pendingWrite) error {
-	msgs := toDBMessages(pw, e.blockedResultCategories)
-	s := toDBSession(pw)
-	s.MessageCount, s.UserMessageCount =
-		postFilterCounts(msgs)
-	e.applyRemoteRewrites(&s, msgs)
-	s.IsAutomated = isAutomatedFromSession(s)
-	if e.shouldPreserveOpenCodeArchive(
-		pw.sess.Agent, pw.sess.File.Path, s.ID,
-		pw.sess.File.Mtime, derefString(s.FileHash), msgs,
-	) {
+	resolveWorktreeProject := e.loadWorktreeProjectResolver()
+	return e.writeSessionFullWithResolver(pw, resolveWorktreeProject)
+}
+
+func (e *Engine) writeSessionFullWithResolver(
+	pw pendingWrite,
+	resolveWorktreeProject worktreeProjectResolver,
+) error {
+	s, msgs, ok := e.prepareSessionWrite(
+		pw, resolveWorktreeProject,
+	)
+	if !ok {
 		return errSessionPreserved
 	}
 	if err := e.db.UpsertSession(s); err != nil {
@@ -4303,13 +4386,21 @@ func (e *Engine) SyncSingleSession(sessionID string) (err error) {
 		return res.err
 	}
 	if res.skip {
+		if err := e.applyWorktreeMappingToSingleSession(
+			sessionID,
+		); err != nil {
+			return err
+		}
 		return nil
 	}
 
 	// Handle incremental updates from processFile (e.g.
 	// append-only JSONL that was already synced).
 	if res.incremental != nil {
-		return e.writeIncremental(res.incremental)
+		if err := e.writeIncremental(res.incremental); err != nil {
+			return err
+		}
+		return e.applyWorktreeMappingToSingleSession(sessionID)
 	}
 
 	if len(res.results) == 0 {
@@ -4337,6 +4428,51 @@ func (e *Engine) SyncSingleSession(sessionID string) (err error) {
 	}
 
 	return nil
+}
+
+func (e *Engine) applyWorktreeMappingToSingleSession(
+	sessionID string,
+) error {
+	ctx := context.Background()
+	sess, err := e.db.GetSession(ctx, sessionID)
+	if err != nil || sess == nil || sess.Cwd == "" {
+		return err
+	}
+
+	machine := sess.Machine
+	if machine == "" {
+		machine = e.machine
+	}
+	_, err = e.db.ApplyWorktreeProjectMappingToSessionFromSync(
+		ctx, machine, sess.ID, sess.Cwd, sess.Project,
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"apply worktree mapping to session %s: %w",
+			sessionID, err,
+		)
+	}
+	return nil
+}
+
+func (e *Engine) applyWorktreeMappingToSkippedPath(path string) {
+	if path == "" {
+		return
+	}
+	lookupPath := path
+	if e.pathRewriter != nil {
+		lookupPath = e.pathRewriter(path)
+	}
+	if _, err := e.db.ApplyWorktreeProjectMappingsToSessionsByPathFromSync(
+		context.Background(),
+		lookupPath,
+	); err != nil {
+		log.Printf(
+			"apply worktree mapping to skipped path %s: %v",
+			lookupPath,
+			err,
+		)
+	}
 }
 
 // syncSingleOpenCode re-syncs a single OpenCode session.
