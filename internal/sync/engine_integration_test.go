@@ -193,7 +193,8 @@ func (e *testEnv) writeClaudeSessionForProject(
 	t *testing.T, dirPath, filename, content string,
 ) string {
 	t.Helper()
-	projName := strings.ReplaceAll(dirPath, "/", "-")
+	projName := strings.NewReplacer("/", "-", "\\", "-", ":", "-").
+		Replace(dirPath)
 	return e.writeClaudeSession(t, projName, filename, content)
 }
 
