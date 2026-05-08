@@ -1484,11 +1484,11 @@ func (e *Engine) syncAllLocked(
 		}
 	}
 
-	all = dedupeDiscoveredFiles(all)
-
 	if !since.IsZero() {
 		all = filterFilesByMtime(all, since)
 	}
+
+	all = dedupeDiscoveredFiles(all)
 
 	verbose := onProgress == nil
 
