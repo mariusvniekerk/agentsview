@@ -326,7 +326,7 @@ func (db *DB) CopyWorktreeProjectMappingsFrom(sourcePath string) error {
 	if err != nil {
 		return fmt.Errorf("begin worktree mapping copy tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if oldDBHasTable(ctx, tx, "worktree_project_mappings") {
 		if _, err := tx.ExecContext(ctx, `
@@ -462,7 +462,7 @@ func (db *DB) applyWorktreeProjectMappings(
 			"beginning worktree mapping apply: %w", err,
 		)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	mappingRows, err := tx.QueryContext(ctx, `
 		SELECT id, machine, path_prefix, project, enabled, created_at, updated_at
@@ -626,7 +626,7 @@ func (db *DB) applyWorktreeProjectMappingToSession(
 			"beginning worktree mapping session apply: %w", err,
 		)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	mappingRows, err := tx.QueryContext(ctx, `
 		SELECT id, machine, path_prefix, project, enabled, created_at, updated_at
@@ -766,7 +766,7 @@ func (db *DB) applyWorktreeProjectMappingsToSessionsByPath(
 			"beginning worktree mapping path apply: %w", err,
 		)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id, machine, project, cwd
