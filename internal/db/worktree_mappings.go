@@ -432,6 +432,150 @@ func bestWorktreeProjectMapping(
 	return WorktreeProjectMapping{}, false
 }
 
+type worktreeMappingSessionRow struct {
+	id      string
+	machine string
+	project string
+	cwd     string
+}
+
+type worktreeMappingSessionUpdate struct {
+	id             string
+	machine        string
+	cwd            string
+	currentProject string
+	nextProject    string
+}
+
+func loadActiveWorktreeMappingsTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	machine string,
+) ([]WorktreeProjectMapping, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, machine, path_prefix, project, enabled, created_at, updated_at
+		FROM worktree_project_mappings
+		WHERE machine = ? AND enabled = 1
+		ORDER BY length(path_prefix) DESC, path_prefix`,
+		machine,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("querying active worktree mappings: %w", err)
+	}
+	return scanWorktreeMappings(rows)
+}
+
+func loadActiveWorktreeMappingsByMachineTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	machines map[string]bool,
+) (map[string][]WorktreeProjectMapping, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, machine, path_prefix, project, enabled, created_at, updated_at
+		FROM worktree_project_mappings
+		WHERE enabled = 1
+		ORDER BY machine, length(path_prefix) DESC, path_prefix`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("querying active worktree mappings: %w", err)
+	}
+	mappings, err := scanWorktreeMappings(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	mappingsByMachine := map[string][]WorktreeProjectMapping{}
+	for _, mapping := range mappings {
+		if machines[mapping.Machine] {
+			mappingsByMachine[mapping.Machine] = append(
+				mappingsByMachine[mapping.Machine],
+				mapping,
+			)
+		}
+	}
+	return mappingsByMachine, nil
+}
+
+func scanWorktreeMappings(rows *sql.Rows) ([]WorktreeProjectMapping, error) {
+	defer rows.Close()
+
+	mappings := []WorktreeProjectMapping{}
+	for rows.Next() {
+		mapping, err := scanWorktreeMapping(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scanning active worktree mapping: %w", err)
+		}
+		mappings = append(mappings, mapping)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating active worktree mappings: %w", err)
+	}
+	return mappings, nil
+}
+
+func applyMappingToSessionRow(
+	mappings []WorktreeProjectMapping,
+	row worktreeMappingSessionRow,
+) (worktreeMappingSessionUpdate, bool, bool) {
+	mapping, ok := bestWorktreeProjectMapping(mappings, row.cwd)
+	if !ok {
+		return worktreeMappingSessionUpdate{}, false, false
+	}
+	if mapping.Project == row.project {
+		return worktreeMappingSessionUpdate{}, true, false
+	}
+	return worktreeMappingSessionUpdate{
+		id:             row.id,
+		machine:        row.machine,
+		cwd:            row.cwd,
+		currentProject: row.project,
+		nextProject:    mapping.Project,
+	}, true, true
+}
+
+func updateSessionProjectTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	update worktreeMappingSessionUpdate,
+	bumpLocalModifiedAt bool,
+) (int, error) {
+	updateSQL := `
+		UPDATE sessions
+		SET project = ?
+		WHERE id = ?
+			AND machine = ?
+			AND deleted_at IS NULL
+			AND cwd = ?
+			AND project = ?`
+	if bumpLocalModifiedAt {
+		updateSQL = `
+			UPDATE sessions
+			SET project = ?,
+				local_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+			WHERE id = ?
+				AND machine = ?
+				AND deleted_at IS NULL
+				AND cwd = ?
+				AND project = ?`
+	}
+	res, err := tx.ExecContext(ctx, updateSQL,
+		update.nextProject,
+		update.id,
+		update.machine,
+		update.cwd,
+		update.currentProject,
+	)
+	if err != nil {
+		return 0, fmt.Errorf(
+			"applying worktree mapping to session %s: %w",
+			update.id,
+			err,
+		)
+	}
+	changed, _ := res.RowsAffected()
+	return int(changed), nil
+}
+
 func (db *DB) ApplyWorktreeProjectMappings(
 	ctx context.Context,
 	machine string,
@@ -464,38 +608,10 @@ func (db *DB) applyWorktreeProjectMappings(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	mappingRows, err := tx.QueryContext(ctx, `
-		SELECT id, machine, path_prefix, project, enabled, created_at, updated_at
-		FROM worktree_project_mappings
-		WHERE machine = ? AND enabled = 1
-		ORDER BY length(path_prefix) DESC, path_prefix`,
-		machine,
-	)
+	mappings, err := loadActiveWorktreeMappingsTx(ctx, tx, machine)
 	if err != nil {
 		return ApplyWorktreeProjectMappingsResult{}, fmt.Errorf(
-			"querying active worktree mappings: %w", err,
-		)
-	}
-	mappings := []WorktreeProjectMapping{}
-	for mappingRows.Next() {
-		m, err := scanWorktreeMapping(mappingRows)
-		if err != nil {
-			mappingRows.Close()
-			return ApplyWorktreeProjectMappingsResult{}, fmt.Errorf(
-				"scanning active worktree mapping: %w", err,
-			)
-		}
-		mappings = append(mappings, m)
-	}
-	if err := mappingRows.Err(); err != nil {
-		mappingRows.Close()
-		return ApplyWorktreeProjectMappingsResult{}, fmt.Errorf(
-			"iterating active worktree mappings: %w", err,
-		)
-	}
-	if err := mappingRows.Close(); err != nil {
-		return ApplyWorktreeProjectMappingsResult{}, fmt.Errorf(
-			"closing active worktree mapping rows: %w", err,
+			"loading active worktree mappings: %w", err,
 		)
 	}
 
@@ -511,30 +627,21 @@ func (db *DB) applyWorktreeProjectMappings(
 		)
 	}
 
-	type sessionUpdate struct {
-		id      string
-		project string
-	}
-	var updates []sessionUpdate
+	var updates []worktreeMappingSessionUpdate
 	var result ApplyWorktreeProjectMappingsResult
 	for rows.Next() {
-		var id string
-		var project string
-		var cwd string
-		if err := rows.Scan(&id, &project, &cwd); err != nil {
+		row := worktreeMappingSessionRow{machine: machine}
+		if err := rows.Scan(&row.id, &row.project, &row.cwd); err != nil {
 			rows.Close()
 			return result, fmt.Errorf("scanning session for worktree mapping apply: %w", err)
 		}
-		mapping, ok := bestWorktreeProjectMapping(mappings, cwd)
-		if !ok {
+		update, matched, shouldUpdate := applyMappingToSessionRow(mappings, row)
+		if !matched {
 			continue
 		}
 		result.MatchedSessions++
-		if project != mapping.Project {
-			updates = append(updates, sessionUpdate{
-				id:      id,
-				project: mapping.Project,
-			})
+		if shouldUpdate {
+			updates = append(updates, update)
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -546,32 +653,13 @@ func (db *DB) applyWorktreeProjectMappings(
 	}
 
 	for _, update := range updates {
-		updateSQL := `
-			UPDATE sessions
-			SET project = ?
-			WHERE id = ? AND machine = ? AND deleted_at IS NULL AND project != ?`
-		if bumpLocalModifiedAt {
-			updateSQL = `
-				UPDATE sessions
-				SET project = ?,
-					local_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-				WHERE id = ? AND machine = ? AND deleted_at IS NULL AND project != ?`
-		}
-		res, err := tx.ExecContext(ctx, updateSQL,
-			update.project,
-			update.id,
-			machine,
-			update.project,
+		changed, err := updateSessionProjectTx(
+			ctx, tx, update, bumpLocalModifiedAt,
 		)
 		if err != nil {
-			return result, fmt.Errorf(
-				"applying worktree mapping to session %s: %w",
-				update.id,
-				err,
-			)
+			return result, err
 		}
-		changed, _ := res.RowsAffected()
-		result.UpdatedSessions += int(changed)
+		result.UpdatedSessions += changed
 	}
 	if err := tx.Commit(); err != nil {
 		return result, fmt.Errorf("committing worktree mapping apply: %w", err)
@@ -628,50 +716,22 @@ func (db *DB) applyWorktreeProjectMappingToSession(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	mappingRows, err := tx.QueryContext(ctx, `
-		SELECT id, machine, path_prefix, project, enabled, created_at, updated_at
-		FROM worktree_project_mappings
-		WHERE machine = ? AND enabled = 1
-		ORDER BY length(path_prefix) DESC, path_prefix`,
-		machine,
-	)
+	mappings, err := loadActiveWorktreeMappingsTx(ctx, tx, machine)
 	if err != nil {
-		return false, fmt.Errorf(
-			"querying active worktree mappings: %w", err,
-		)
-	}
-	mappings := []WorktreeProjectMapping{}
-	for mappingRows.Next() {
-		m, err := scanWorktreeMapping(mappingRows)
-		if err != nil {
-			mappingRows.Close()
-			return false, fmt.Errorf(
-				"scanning active worktree mapping: %w", err,
-			)
-		}
-		mappings = append(mappings, m)
-	}
-	if err := mappingRows.Err(); err != nil {
-		mappingRows.Close()
-		return false, fmt.Errorf(
-			"iterating active worktree mappings: %w", err,
-		)
-	}
-	if err := mappingRows.Close(); err != nil {
-		return false, fmt.Errorf(
-			"closing active worktree mapping rows: %w", err,
-		)
+		return false, fmt.Errorf("loading active worktree mappings: %w", err)
 	}
 
-	var rowProject string
-	var rowCwd string
+	row := worktreeMappingSessionRow{
+		id:      sessionID,
+		machine: machine,
+	}
 	err = tx.QueryRowContext(ctx, `
 		SELECT project, cwd
 		FROM sessions
 		WHERE id = ? AND machine = ? AND deleted_at IS NULL`,
 		sessionID,
 		machine,
-	).Scan(&rowProject, &rowCwd)
+	).Scan(&row.project, &row.cwd)
 	if err == sql.ErrNoRows {
 		return false, nil
 	}
@@ -683,45 +743,17 @@ func (db *DB) applyWorktreeProjectMappingToSession(
 		)
 	}
 
-	mapping, ok := bestWorktreeProjectMapping(mappings, rowCwd)
-	if !ok || mapping.Project == rowProject {
+	update, matched, shouldUpdate := applyMappingToSessionRow(mappings, row)
+	if !matched || !shouldUpdate {
 		return false, nil
 	}
 
-	updateSQL := `
-		UPDATE sessions
-		SET project = ?
-		WHERE id = ?
-			AND machine = ?
-			AND deleted_at IS NULL
-			AND cwd = ?
-			AND project = ?`
-	if bumpLocalModifiedAt {
-		updateSQL = `
-			UPDATE sessions
-			SET project = ?,
-				local_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-			WHERE id = ?
-				AND machine = ?
-				AND deleted_at IS NULL
-				AND cwd = ?
-				AND project = ?`
-	}
-	res, err := tx.ExecContext(ctx, updateSQL,
-		mapping.Project,
-		sessionID,
-		machine,
-		rowCwd,
-		rowProject,
+	changed, err := updateSessionProjectTx(
+		ctx, tx, update, bumpLocalModifiedAt,
 	)
 	if err != nil {
-		return false, fmt.Errorf(
-			"applying worktree mapping to session %s: %w",
-			sessionID,
-			err,
-		)
+		return false, err
 	}
-	changed, _ := res.RowsAffected()
 	if err := tx.Commit(); err != nil {
 		return false, fmt.Errorf(
 			"committing worktree mapping session apply: %w", err,
@@ -780,16 +812,10 @@ func (db *DB) applyWorktreeProjectMappingsToSessionsByPath(
 		)
 	}
 
-	type sessionRow struct {
-		id      string
-		machine string
-		project string
-		cwd     string
-	}
-	var sessions []sessionRow
+	var sessions []worktreeMappingSessionRow
 	machines := map[string]bool{}
 	for rows.Next() {
-		var row sessionRow
+		var row worktreeMappingSessionRow
 		if err := rows.Scan(
 			&row.id, &row.machine, &row.project, &row.cwd,
 		); err != nil {
@@ -818,92 +844,35 @@ func (db *DB) applyWorktreeProjectMappingsToSessionsByPath(
 		return ApplyWorktreeProjectMappingsResult{}, nil
 	}
 
-	mappingRows, err := tx.QueryContext(ctx, `
-		SELECT id, machine, path_prefix, project, enabled, created_at, updated_at
-		FROM worktree_project_mappings
-		WHERE enabled = 1
-		ORDER BY machine, length(path_prefix) DESC, path_prefix`,
+	mappingsByMachine, err := loadActiveWorktreeMappingsByMachineTx(
+		ctx, tx, machines,
 	)
 	if err != nil {
 		return ApplyWorktreeProjectMappingsResult{}, fmt.Errorf(
-			"querying active worktree mappings: %w", err,
-		)
-	}
-	mappingsByMachine := map[string][]WorktreeProjectMapping{}
-	for mappingRows.Next() {
-		m, err := scanWorktreeMapping(mappingRows)
-		if err != nil {
-			mappingRows.Close()
-			return ApplyWorktreeProjectMappingsResult{}, fmt.Errorf(
-				"scanning active worktree mapping: %w", err,
-			)
-		}
-		if machines[m.Machine] {
-			mappingsByMachine[m.Machine] = append(
-				mappingsByMachine[m.Machine], m,
-			)
-		}
-	}
-	if err := mappingRows.Err(); err != nil {
-		mappingRows.Close()
-		return ApplyWorktreeProjectMappingsResult{}, fmt.Errorf(
-			"iterating active worktree mappings: %w", err,
-		)
-	}
-	if err := mappingRows.Close(); err != nil {
-		return ApplyWorktreeProjectMappingsResult{}, fmt.Errorf(
-			"closing active worktree mapping rows: %w", err,
+			"loading active worktree mappings: %w", err,
 		)
 	}
 
 	var result ApplyWorktreeProjectMappingsResult
 	for _, session := range sessions {
-		mapping, ok := bestWorktreeProjectMapping(
+		update, matched, shouldUpdate := applyMappingToSessionRow(
 			mappingsByMachine[session.machine],
-			session.cwd,
+			session,
 		)
-		if !ok {
+		if !matched {
 			continue
 		}
 		result.MatchedSessions++
-		if mapping.Project == session.project {
+		if !shouldUpdate {
 			continue
 		}
-		updateSQL := `
-			UPDATE sessions
-			SET project = ?
-			WHERE id = ?
-				AND machine = ?
-				AND deleted_at IS NULL
-				AND cwd = ?
-				AND project = ?`
-		if bumpLocalModifiedAt {
-			updateSQL = `
-				UPDATE sessions
-				SET project = ?,
-					local_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-				WHERE id = ?
-					AND machine = ?
-					AND deleted_at IS NULL
-					AND cwd = ?
-					AND project = ?`
-		}
-		res, err := tx.ExecContext(ctx, updateSQL,
-			mapping.Project,
-			session.id,
-			session.machine,
-			session.cwd,
-			session.project,
+		changed, err := updateSessionProjectTx(
+			ctx, tx, update, bumpLocalModifiedAt,
 		)
 		if err != nil {
-			return result, fmt.Errorf(
-				"applying worktree mapping to session %s: %w",
-				session.id,
-				err,
-			)
+			return result, err
 		}
-		changed, _ := res.RowsAffected()
-		result.UpdatedSessions += int(changed)
+		result.UpdatedSessions += changed
 	}
 	if err := tx.Commit(); err != nil {
 		return result, fmt.Errorf(

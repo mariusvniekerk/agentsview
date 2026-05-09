@@ -4400,7 +4400,7 @@ func (e *Engine) SyncSingleSession(sessionID string) (err error) {
 		if err := e.writeIncremental(res.incremental); err != nil {
 			return err
 		}
-		return e.applyWorktreeMappingToSingleSession(sessionID)
+		return nil
 	}
 
 	if len(res.results) == 0 {
