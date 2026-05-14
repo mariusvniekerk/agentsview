@@ -4650,7 +4650,14 @@ func (e *Engine) SyncSingleSession(sessionID string) (err error) {
 		return err
 	}
 	if def.Type == parser.AgentHermes {
-		ok, err := e.syncSingleHermesArchive(sessionID, path)
+		hermesProject := ""
+		if sess, _ := e.db.GetSession(context.Background(), sessionID); sess != nil &&
+			sess.Project != "" && !parser.NeedsProjectReparse(sess.Project) {
+			hermesProject = sess.Project
+		}
+		ok, err := e.syncSingleHermesArchive(
+			sessionID, path, hermesProject,
+		)
 		if err != nil {
 			return err
 		}
@@ -4768,7 +4775,7 @@ func (e *Engine) SyncSingleSession(sessionID string) (err error) {
 }
 
 func (e *Engine) syncSingleHermesArchive(
-	sessionID, path string,
+	sessionID, path, project string,
 ) (bool, error) {
 	stateDB := ""
 	if filepath.Base(path) == "state.db" {
@@ -4786,7 +4793,7 @@ func (e *Engine) syncSingleHermesArchive(
 	}
 
 	results, err := parser.ParseHermesArchive(
-		stateDB, "", e.machine,
+		stateDB, project, e.machine,
 	)
 	if err != nil {
 		return true, err

@@ -176,7 +176,10 @@ SELECT
 	ue.cost_source,
 	'' AS claude_message_id,
 	'' AS claude_request_id,
-	COALESCE(NULLIF(ue.dedup_key, ''), ue.source || ':' || ue.session_id) AS usage_dedup_key,
+	CASE
+		WHEN ue.dedup_key != '' THEN ue.session_id || ':' || ue.source || ':' || ue.dedup_key
+		ELSE ue.session_id || ':' || ue.source || ':id:' || ue.id
+	END AS usage_dedup_key,
 	s.project,
 	s.agent,
 	s.machine,

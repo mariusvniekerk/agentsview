@@ -84,8 +84,12 @@ func parseHermesTranscriptArchive(
 ) ([]ParseResult, error) {
 	var results []ParseResult
 	for _, file := range discoverHermesTranscriptFiles(root) {
+		fileProject := file.Project
+		if project != "" {
+			fileProject = project
+		}
 		sess, msgs, err := ParseHermesSession(
-			file.Path, file.Project, machine,
+			file.Path, fileProject, machine,
 		)
 		if err != nil {
 			return nil, err

@@ -230,9 +230,25 @@ func TestUsageQueriesUnionMessageAndUsageEvents(t *testing.T) {
 			InputTokens:          300,
 			OutputTokens:         70,
 			CacheReadInputTokens: 20,
-			DedupKey:             "session:hermes:event",
+			DedupKey:             "shared-key",
 		}},
 	), "replace hermes usage event")
+	insertSession(t, d, "hermes:event-2", "proj-b", func(s *Session) {
+		s.Agent = "hermes"
+		s.StartedAt = new("2026-05-14T10:10:00Z")
+		s.UserMessageCount = 2
+	})
+	requireNoError(t, d.ReplaceSessionUsageEvents(
+		"hermes:event-2",
+		[]UsageEvent{{
+			SessionID:    "hermes:event-2",
+			Source:       "session",
+			Model:        "gpt-5.4",
+			InputTokens:  50,
+			OutputTokens: 5,
+			DedupKey:     "shared-key",
+		}},
+	), "replace second hermes usage event")
 
 	filter := UsageFilter{
 		From:       "2026-05-14",
@@ -241,8 +257,8 @@ func TestUsageQueriesUnionMessageAndUsageEvents(t *testing.T) {
 	}
 	daily, err := d.GetDailyUsage(ctx, filter)
 	requireNoError(t, err, "GetDailyUsage")
-	if daily.Totals.InputTokens != 400 ||
-		daily.Totals.OutputTokens != 110 ||
+	if daily.Totals.InputTokens != 450 ||
+		daily.Totals.OutputTokens != 115 ||
 		daily.Totals.CacheReadTokens != 20 {
 		t.Fatalf("daily totals = %#v", daily.Totals)
 	}
@@ -266,14 +282,17 @@ func TestUsageQueriesUnionMessageAndUsageEvents(t *testing.T) {
 	if topByID["hermes:event"].TotalTokens != 390 {
 		t.Fatalf("hermes top tokens = %#v", topByID["hermes:event"])
 	}
+	if topByID["hermes:event-2"].TotalTokens != 55 {
+		t.Fatalf("second hermes top tokens = %#v", topByID["hermes:event-2"])
+	}
 
 	counts, err := d.GetUsageSessionCounts(ctx, filter)
 	requireNoError(t, err, "GetUsageSessionCounts")
-	if counts.Total != 2 ||
+	if counts.Total != 3 ||
 		counts.ByAgent["claude"] != 1 ||
-		counts.ByAgent["hermes"] != 1 ||
+		counts.ByAgent["hermes"] != 2 ||
 		counts.ByProject["proj-a"] != 1 ||
-		counts.ByProject["proj-b"] != 1 {
+		counts.ByProject["proj-b"] != 2 {
 		t.Fatalf("counts = %#v", counts)
 	}
 }

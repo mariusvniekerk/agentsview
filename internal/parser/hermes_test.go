@@ -183,13 +183,13 @@ func TestParseHermesArchive_FallsBackToTranscriptsWhenStateDBUnreadable(
 		0o644,
 	))
 
-	results, err := ParseHermesArchive(root, "", "local")
+	results, err := ParseHermesArchive(root, "override-project", "local")
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 
 	res := results[0]
 	assert.Equal(t, "hermes:child", res.Session.ID)
-	assert.Equal(t, "hermes-discord", res.Session.Project)
+	assert.Equal(t, "override-project", res.Session.Project)
 	assert.Equal(t, "hello from transcript", res.Session.FirstMessage)
 	assert.Len(t, res.Messages, 2)
 	assert.Empty(t, res.UsageEvents)

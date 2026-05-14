@@ -286,7 +286,9 @@ func TestPostgresUsageQueriesUnionUsageEvents(t *testing.T) {
 			('claude-msg', 'test-machine', 'proj-a', 'claude',
 			 '2026-05-14T09:00:00Z'::timestamptz, 1, 1),
 			('hermes-event', 'test-machine', 'proj-b', 'hermes',
-			 '2026-05-14T10:00:00Z'::timestamptz, 1, 1)`)
+			 '2026-05-14T10:00:00Z'::timestamptz, 1, 1),
+			('hermes-event-2', 'test-machine', 'proj-b', 'hermes',
+			 '2026-05-14T10:10:00Z'::timestamptz, 1, 1)`)
 	if err != nil {
 		t.Fatalf("insert sessions: %v", err)
 	}
@@ -308,7 +310,9 @@ func TestPostgresUsageQueriesUnionUsageEvents(t *testing.T) {
 			cache_read_input_tokens, occurred_at, dedup_key
 		) VALUES
 			('hermes-event', 'session', 'gpt-5.4', 300, 70, 20,
-			 '2026-05-14T10:05:00Z'::timestamptz, 'session:hermes-event')`)
+			 '2026-05-14T10:05:00Z'::timestamptz, 'shared-key'),
+			('hermes-event-2', 'session', 'gpt-5.4', 50, 5, 0,
+			 '2026-05-14T10:10:00Z'::timestamptz, 'shared-key')`)
 	if err != nil {
 		t.Fatalf("insert usage event: %v", err)
 	}
@@ -323,10 +327,10 @@ func TestPostgresUsageQueriesUnionUsageEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetDailyUsage: %v", err)
 	}
-	if got, want := result.Totals.InputTokens, 400; got != want {
+	if got, want := result.Totals.InputTokens, 450; got != want {
 		t.Fatalf("InputTokens = %d, want %d", got, want)
 	}
-	if got, want := result.Totals.OutputTokens, 110; got != want {
+	if got, want := result.Totals.OutputTokens, 115; got != want {
 		t.Fatalf("OutputTokens = %d, want %d", got, want)
 	}
 	if got, want := result.Totals.CacheReadTokens, 20; got != want {
@@ -340,7 +344,7 @@ func TestPostgresUsageQueriesUnionUsageEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTopSessionsByCost: %v", err)
 	}
-	if got, want := len(top), 2; got != want {
+	if got, want := len(top), 3; got != want {
 		t.Fatalf("top len = %d, want %d", got, want)
 	}
 	if got, want := top[0].SessionID, "hermes-event"; got != want {
@@ -354,13 +358,13 @@ func TestPostgresUsageQueriesUnionUsageEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetUsageSessionCounts: %v", err)
 	}
-	if got, want := counts.Total, 2; got != want {
+	if got, want := counts.Total, 3; got != want {
 		t.Fatalf("Total = %d, want %d", got, want)
 	}
-	if got, want := counts.ByAgent["hermes"], 1; got != want {
+	if got, want := counts.ByAgent["hermes"], 2; got != want {
 		t.Fatalf("ByAgent[hermes] = %d, want %d", got, want)
 	}
-	if got, want := counts.ByProject["proj-b"], 1; got != want {
+	if got, want := counts.ByProject["proj-b"], 2; got != want {
 		t.Fatalf("ByProject[proj-b] = %d, want %d", got, want)
 	}
 }

@@ -1215,6 +1215,16 @@ func CheckSchemaCompat(
 		)
 	}
 	rows.Close()
+
+	rows, err = db.QueryContext(ctx,
+		`SELECT id FROM usage_events LIMIT 0`)
+	if err != nil {
+		return fmt.Errorf(
+			"usage_events table missing required columns: %w",
+			err,
+		)
+	}
+	rows.Close()
 	return nil
 }
 
