@@ -561,12 +561,31 @@ func parseHermesStateDB(
 	}
 
 	var results []ParseResult
+	seen := make(map[string]struct{}, len(sessions))
 	for _, ss := range sessions {
 		res, ok := buildHermesStateResult(
 			ss, messages[ss.id], sessionsDir, stateDB, project, machine,
 		)
 		if ok {
 			results = append(results, res)
+			seen[ss.id] = struct{}{}
+		}
+	}
+	for _, file := range discoverHermesTranscriptFiles(sessionsDir) {
+		rawID := HermesSessionID(filepath.Base(file.Path))
+		if _, ok := seen[rawID]; ok {
+			continue
+		}
+		sess, msgs, err := ParseHermesSession(
+			file.Path, file.Project, machine,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if sess != nil {
+			results = append(results, ParseResult{
+				Session: *sess, Messages: msgs,
+			})
 		}
 	}
 	sort.Slice(results, func(i, j int) bool {
@@ -926,7 +945,8 @@ func timeString(primary, fallback time.Time) string {
 func countHermesUsers(msgs []ParsedMessage) int {
 	count := 0
 	for _, msg := range msgs {
-		if msg.Role == RoleUser && !msg.IsSystem {
+		if msg.Role == RoleUser && !msg.IsSystem &&
+			len(msg.ToolResults) == 0 && strings.TrimSpace(msg.Content) != "" {
 			count++
 		}
 	}

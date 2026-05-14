@@ -221,6 +221,43 @@ func TestParseHermesArchive_UsesStateMessagesWhenJSONLIsLowerQuality(
 	assert.Equal(t, "hermes-state-db", res.Session.SourceVersion)
 }
 
+func TestParseHermesArchiveIncludesTranscriptsMissingFromStateDB(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	sessionsDir := filepath.Join(root, "sessions")
+	require.NoError(t, os.MkdirAll(sessionsDir, 0o755))
+	createHermesStateDB(t, root)
+	require.NoError(t, os.WriteFile(
+		filepath.Join(sessionsDir, "session_extra.json"),
+		[]byte(`{
+			"platform":"linux",
+			"session_start":"2026-05-14T11:00:00Z",
+			"messages":[
+				{"role":"user","content":"extra transcript","timestamp":"2026-05-14T11:01:00Z"}
+			]
+		}`),
+		0o644,
+	))
+
+	results, err := ParseHermesArchive(root, "", "local")
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+
+	ids := []string{results[0].Session.ID, results[1].Session.ID}
+	assert.Contains(t, ids, "hermes:child")
+	assert.Contains(t, ids, "hermes:extra")
+}
+
+func TestCountHermesUsersSkipsToolResultOnlyMessages(t *testing.T) {
+	got := countHermesUsers([]ParsedMessage{
+		{Role: RoleUser, Content: "real prompt"},
+		{Role: RoleUser, ToolResults: []ParsedToolResult{{ToolUseID: "tc1"}}},
+		{Role: RoleUser, Content: "system", IsSystem: true},
+	})
+	assert.Equal(t, 1, got)
+}
+
 func TestDiscoverHermesSessionsFindsTranscriptOnlyRoot(
 	t *testing.T,
 ) {
