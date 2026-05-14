@@ -183,7 +183,11 @@ message-level today and filters for non-empty `messages.model` and
 message would make the numbers show up quickly, but it would misrepresent the
 source of truth.
 
-The cleaner design is to add session-level usage events.
+The cleaner design is to add session-level usage events and teach usage queries
+to read both sources. Message-level usage remains stored only on `messages`.
+Hermes session-level usage is stored only in `usage_events`. Reporting queries
+normalize both into a common row shape with `UNION ALL`; they do not duplicate
+existing message-level usage into the new table.
 
 Suggested table:
 
@@ -207,9 +211,7 @@ CREATE TABLE IF NOT EXISTS usage_events (
 );
 ```
 
-Existing message-level usage can be projected into this shape during queries or
-backfilled into the table. Hermes writes one `source = "session"` event per state
-session using:
+Hermes writes one `source = "session"` event per state session using:
 
 - `input_tokens`
 - `output_tokens`
@@ -221,10 +223,85 @@ session using:
 - `cost_source`
 - `model`
 
-Usage queries should aggregate `usage_events` and preserve the current
-message-level behavior for Claude, Codex, and other agents. This avoids
-fabricating per-message Hermes accounting while still making Hermes visible on
-usage dashboards.
+Usage queries should build a normalized usage-row stream with two arms:
+
+```sql
+SELECT
+    m.session_id,
+    m.ordinal AS message_ordinal,
+    'message' AS usage_source,
+    COALESCE(m.timestamp, s.started_at) AS occurred_at,
+    m.model,
+    m.token_usage,
+    0 AS input_tokens,
+    0 AS output_tokens,
+    0 AS cache_creation_input_tokens,
+    0 AS cache_read_input_tokens,
+    0 AS reasoning_tokens,
+    NULL AS cost_usd,
+    '' AS cost_status,
+    '' AS cost_source,
+    m.claude_message_id,
+    m.claude_request_id,
+    '' AS usage_dedup_key,
+    s.project,
+    s.agent,
+    s.machine,
+    s.user_message_count,
+    s.is_automated
+FROM messages m
+JOIN sessions s ON s.id = m.session_id
+WHERE m.token_usage != ''
+  AND m.model != ''
+  AND m.model != '<synthetic>'
+  AND s.deleted_at IS NULL
+
+UNION ALL
+
+SELECT
+    ue.session_id,
+    ue.message_ordinal,
+    ue.source AS usage_source,
+    COALESCE(ue.occurred_at, s.started_at) AS occurred_at,
+    ue.model,
+    '' AS token_usage,
+    ue.input_tokens,
+    ue.output_tokens,
+    ue.cache_creation_input_tokens,
+    ue.cache_read_input_tokens,
+    ue.reasoning_tokens,
+    ue.cost_usd,
+    ue.cost_status,
+    ue.cost_source,
+    '' AS claude_message_id,
+    '' AS claude_request_id,
+    COALESCE(NULLIF(ue.dedup_key, ''), ue.source || ':' || ue.session_id)
+        AS usage_dedup_key,
+    s.project,
+    s.agent,
+    s.machine,
+    s.user_message_count,
+    s.is_automated
+FROM usage_events ue
+JOIN sessions s ON s.id = ue.session_id
+WHERE ue.model != ''
+  AND s.deleted_at IS NULL
+```
+
+`internal/db/usage.go` and `internal/postgres/usage.go` should then apply the
+same date, model, agent, project, machine, user-message, one-shot, automated,
+and active-since filters to the unified stream's normalized aliases rather than
+directly to `messages` columns. The existing Go-side `token_usage` parsing
+remains the path for `usage_source = "message"` rows. `usage_source !=
+"message"` rows use the scalar token columns directly and use `cost_usd` when
+Hermes supplies a trusted cost, falling back to model pricing when it does not.
+
+Existing Claude/Codex usage keeps its message-level dedup behavior based on
+`claude_message_id` plus `claude_request_id`. Hermes events use
+`usage_events.dedup_key` when present and otherwise naturally count once per
+session event. This preserves the current message-level behavior for other
+agents while making Hermes visible on usage dashboards without fabricating
+per-message accounting.
 
 ## Sync And Resync Behavior
 
@@ -250,7 +327,8 @@ Usage:
 - Before: Hermes contributes no usage or pricing because every Hermes message has
   empty `model` and `token_usage`.
 - After: Hermes contributes token totals, cache-read volume, reasoning tokens,
-  API-call counts, and billing status through session-level usage events.
+  API-call counts, and billing status through session-level usage events that
+  are unioned with existing message-level usage at query time.
 
 Transcript quality:
 
@@ -298,6 +376,12 @@ Backend tests should include:
   `user_message_count`.
 - Hermes session-level usage appears in daily usage totals and top-session usage
   without populating fake per-message `token_usage`.
+- Existing Claude, Codex, and other message-level usage still comes from
+  `messages.token_usage`, is not copied into `usage_events`, and does not
+  double-count when the unified usage stream is queried.
+- A mixed fixture with one message-level agent session and one Hermes
+  `usage_events` row returns the sum of both sources in daily totals, top
+  sessions, model breakdowns, project breakdowns, and agent breakdowns.
 - State DB lock or schema mismatch falls back to transcript files without failing
   the entire sync.
 
@@ -311,7 +395,7 @@ Frontend tests can stay focused on existing grouping utilities:
 ## Rollout
 
 1. Add the hybrid parser path and tests with transcript fallback preserved.
-2. Add session-level usage storage/query support.
+2. Add session-level usage storage plus `UNION ALL` query support.
 3. Wire Hermes state-db usage into that usage path.
 4. Trigger a full resync so existing Hermes rows are rebuilt with parent links,
    compact-boundary metadata, and usage events.
