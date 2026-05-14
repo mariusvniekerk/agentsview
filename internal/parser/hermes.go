@@ -4,16 +4,80 @@
 package parser
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/tidwall/gjson"
 )
+
+type hermesStateSession struct {
+	id               string
+	source           string
+	model            string
+	parentSessionID  string
+	startedAt        time.Time
+	endedAt          time.Time
+	messageCount     int
+	inputTokens      int
+	outputTokens     int
+	cacheReadTokens  int
+	cacheWriteTokens int
+	reasoningTokens  int
+	estimatedCost    sql.NullFloat64
+	actualCost       sql.NullFloat64
+	costStatus       string
+	costSource       string
+	title            string
+	apiCallCount     int
+}
+
+type hermesStateMessage struct {
+	role                string
+	content             string
+	toolCallID          string
+	toolCalls           string
+	timestamp           time.Time
+	finishReason        string
+	reasoning           string
+	reasoningContent    string
+	reasoningDetails    string
+	codexReasoningItems string
+	codexMessageItems   string
+}
+
+// ParseHermesArchive parses a Hermes root directory. If a state.db is
+// present, it uses that database for session metadata and usage while
+// selecting the richest available message stream. Without state.db it
+// falls back to the transcript-file parser.
+func ParseHermesArchive(root, project, machine string) ([]ParseResult, error) {
+	stateDB, sessionsDir, ok := hermesStatePaths(root)
+	if !ok {
+		var results []ParseResult
+		for _, file := range DiscoverHermesSessions(root) {
+			sess, msgs, err := ParseHermesSession(
+				file.Path, file.Project, machine,
+			)
+			if err != nil {
+				return nil, err
+			}
+			if sess != nil {
+				results = append(results, ParseResult{
+					Session: *sess, Messages: msgs,
+				})
+			}
+		}
+		return results, nil
+	}
+	return parseHermesStateDB(stateDB, sessionsDir, project, machine)
+}
 
 // ParseHermesSession parses a Hermes Agent JSONL session file.
 //
@@ -97,8 +161,9 @@ func parseHermesJSONLSession(path, project, machine string) (*ParsedSession, []P
 
 			// Strip skill injection prefixes for cleaner display.
 			displayContent := stripHermesSkillPrefix(content)
+			isCompact := isHermesCompactBoundary(displayContent)
 
-			if firstMsg == "" && displayContent != "" {
+			if firstMsg == "" && displayContent != "" && !isCompact {
 				firstMsg = truncate(
 					strings.ReplaceAll(displayContent, "\n", " "),
 					300,
@@ -106,14 +171,20 @@ func parseHermesJSONLSession(path, project, machine string) (*ParsedSession, []P
 			}
 
 			messages = append(messages, ParsedMessage{
-				Ordinal:       ordinal,
-				Role:          RoleUser,
-				Content:       displayContent,
-				Timestamp:     ts,
-				ContentLength: len(content),
+				Ordinal:           ordinal,
+				Role:              RoleUser,
+				Content:           displayContent,
+				Timestamp:         ts,
+				ContentLength:     len(content),
+				IsSystem:          isCompact,
+				SourceType:        sourceTypeIf(isCompact, "system"),
+				SourceSubtype:     sourceTypeIf(isCompact, "compact_boundary"),
+				IsCompactBoundary: isCompact,
 			})
 			ordinal++
-			realUserCount++
+			if !isCompact {
+				realUserCount++
+			}
 
 		case "assistant":
 			content := gjson.Get(line, "content").Str
@@ -289,8 +360,9 @@ func parseHermesJSONSession(path, project, machine string) (*ParsedSession, []Pa
 			}
 
 			displayContent := stripHermesSkillPrefix(content)
+			isCompact := isHermesCompactBoundary(displayContent)
 
-			if firstMsg == "" && displayContent != "" {
+			if firstMsg == "" && displayContent != "" && !isCompact {
 				firstMsg = truncate(
 					strings.ReplaceAll(displayContent, "\n", " "),
 					300,
@@ -298,14 +370,20 @@ func parseHermesJSONSession(path, project, machine string) (*ParsedSession, []Pa
 			}
 
 			messages = append(messages, ParsedMessage{
-				Ordinal:       ordinal,
-				Role:          RoleUser,
-				Content:       displayContent,
-				Timestamp:     msgTS,
-				ContentLength: len(content),
+				Ordinal:           ordinal,
+				Role:              RoleUser,
+				Content:           displayContent,
+				Timestamp:         msgTS,
+				ContentLength:     len(content),
+				IsSystem:          isCompact,
+				SourceType:        sourceTypeIf(isCompact, "system"),
+				SourceSubtype:     sourceTypeIf(isCompact, "compact_boundary"),
+				IsCompactBoundary: isCompact,
 			})
 			ordinal++
-			realUserCount++
+			if !isCompact {
+				realUserCount++
+			}
 
 		case "assistant":
 			content := strings.TrimSpace(msg.Get("content").Str)
@@ -421,6 +499,452 @@ func parseHermesJSONSession(path, project, machine string) (*ParsedSession, []Pa
 	return sess, messages, nil
 }
 
+func hermesStatePaths(root string) (stateDB, sessionsDir string, ok bool) {
+	if root == "" {
+		return "", "", false
+	}
+	info, err := os.Stat(root)
+	if err == nil && !info.IsDir() &&
+		filepath.Base(root) == "state.db" {
+		dir := filepath.Dir(root)
+		return root, filepath.Join(dir, "sessions"), true
+	}
+	if st := filepath.Join(root, "state.db"); IsRegularFile(st) {
+		return st, filepath.Join(root, "sessions"), true
+	}
+	if filepath.Base(root) == "sessions" {
+		parent := filepath.Dir(root)
+		st := filepath.Join(parent, "state.db")
+		if IsRegularFile(st) {
+			return st, root, true
+		}
+	}
+	return "", "", false
+}
+
+func parseHermesStateDB(
+	stateDB, sessionsDir, project, machine string,
+) ([]ParseResult, error) {
+	conn, err := sql.Open("sqlite3", "file:"+stateDB+"?mode=ro")
+	if err != nil {
+		return nil, fmt.Errorf("open hermes state db: %w", err)
+	}
+	defer conn.Close()
+
+	sessions, err := readHermesStateSessions(conn)
+	if err != nil {
+		return nil, err
+	}
+	messages, err := readHermesStateMessages(conn)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []ParseResult
+	for _, ss := range sessions {
+		res, ok := buildHermesStateResult(
+			ss, messages[ss.id], sessionsDir, stateDB, project, machine,
+		)
+		if ok {
+			results = append(results, res)
+		}
+	}
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Session.ID < results[j].Session.ID
+	})
+	return results, nil
+}
+
+func readHermesStateSessions(
+	conn *sql.DB,
+) ([]hermesStateSession, error) {
+	rows, err := conn.Query(`
+		SELECT id, source, COALESCE(model, ''),
+			COALESCE(parent_session_id, ''), started_at,
+			COALESCE(ended_at, 0), COALESCE(message_count, 0),
+			COALESCE(input_tokens, 0), COALESCE(output_tokens, 0),
+			COALESCE(cache_read_tokens, 0),
+			COALESCE(cache_write_tokens, 0),
+			COALESCE(reasoning_tokens, 0),
+			estimated_cost_usd, actual_cost_usd,
+			COALESCE(cost_status, ''), COALESCE(cost_source, ''),
+			COALESCE(title, ''), COALESCE(api_call_count, 0)
+		FROM sessions
+		ORDER BY started_at ASC, id ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("query hermes sessions: %w", err)
+	}
+	defer rows.Close()
+
+	var out []hermesStateSession
+	for rows.Next() {
+		var ss hermesStateSession
+		var started, ended float64
+		if err := rows.Scan(
+			&ss.id, &ss.source, &ss.model,
+			&ss.parentSessionID, &started, &ended,
+			&ss.messageCount, &ss.inputTokens, &ss.outputTokens,
+			&ss.cacheReadTokens, &ss.cacheWriteTokens,
+			&ss.reasoningTokens, &ss.estimatedCost, &ss.actualCost,
+			&ss.costStatus, &ss.costSource, &ss.title,
+			&ss.apiCallCount,
+		); err != nil {
+			return nil, fmt.Errorf("scan hermes session: %w", err)
+		}
+		ss.startedAt = hermesUnixTime(started)
+		ss.endedAt = hermesUnixTime(ended)
+		out = append(out, ss)
+	}
+	return out, rows.Err()
+}
+
+func readHermesStateMessages(
+	conn *sql.DB,
+) (map[string][]hermesStateMessage, error) {
+	rows, err := conn.Query(`
+		SELECT session_id, role, COALESCE(content, ''),
+			COALESCE(tool_call_id, ''), COALESCE(tool_calls, ''),
+			timestamp, COALESCE(finish_reason, ''),
+			COALESCE(reasoning, ''), COALESCE(reasoning_content, ''),
+			COALESCE(reasoning_details, ''),
+			COALESCE(codex_reasoning_items, ''),
+			COALESCE(codex_message_items, '')
+		FROM messages
+		ORDER BY session_id ASC, timestamp ASC, id ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("query hermes messages: %w", err)
+	}
+	defer rows.Close()
+
+	out := make(map[string][]hermesStateMessage)
+	for rows.Next() {
+		var sid string
+		var hm hermesStateMessage
+		var ts float64
+		if err := rows.Scan(
+			&sid, &hm.role, &hm.content, &hm.toolCallID,
+			&hm.toolCalls, &ts, &hm.finishReason,
+			&hm.reasoning, &hm.reasoningContent,
+			&hm.reasoningDetails, &hm.codexReasoningItems,
+			&hm.codexMessageItems,
+		); err != nil {
+			return nil, fmt.Errorf("scan hermes message: %w", err)
+		}
+		hm.timestamp = hermesUnixTime(ts)
+		out[sid] = append(out[sid], hm)
+	}
+	return out, rows.Err()
+}
+
+func buildHermesStateResult(
+	ss hermesStateSession, stateMessages []hermesStateMessage,
+	sessionsDir, stateDB, project, machine string,
+) (ParseResult, bool) {
+	jsonPath := filepath.Join(sessionsDir, "session_"+ss.id+".json")
+	jsonlPath := filepath.Join(sessionsDir, ss.id+".jsonl")
+
+	var sess *ParsedSession
+	var msgs []ParsedMessage
+	var err error
+	selectedPath := stateDB
+	if IsRegularFile(jsonPath) {
+		sess, msgs, err = parseHermesJSONSession(jsonPath, project, machine)
+		if err == nil && sess != nil &&
+			hermesMessageQuality(msgs) >= hermesStateQuality(stateMessages) {
+			selectedPath = jsonPath
+		} else {
+			sess, msgs = nil, nil
+		}
+	}
+	if sess == nil && IsRegularFile(jsonlPath) {
+		sess, msgs, err = parseHermesJSONLSession(jsonlPath, project, machine)
+		if err == nil && sess != nil {
+			selectedPath = jsonlPath
+		}
+	}
+	if sess == nil {
+		msgs = convertHermesStateMessages(stateMessages)
+		if len(msgs) == 0 {
+			return ParseResult{}, false
+		}
+		sess = &ParsedSession{
+			ID:               "hermes:" + ss.id,
+			Agent:            AgentHermes,
+			Machine:          machine,
+			StartedAt:        ss.startedAt,
+			EndedAt:          ss.endedAt,
+			MessageCount:     len(msgs),
+			UserMessageCount: countHermesUsers(msgs),
+			FirstMessage:     firstHermesMessage(msgs),
+		}
+	}
+
+	applyHermesStateMetadata(sess, ss, selectedPath, project)
+	return ParseResult{
+		Session:     *sess,
+		Messages:    msgs,
+		UsageEvents: hermesUsageEvents(ss, sess.ID),
+	}, true
+}
+
+func applyHermesStateMetadata(
+	sess *ParsedSession, ss hermesStateSession, selectedPath, project string,
+) {
+	sess.ID = "hermes:" + ss.id
+	sess.Agent = AgentHermes
+	if project != "" {
+		sess.Project = project
+	} else if ss.source != "" {
+		sess.Project = "hermes-" + ss.source
+	} else if sess.Project == "" {
+		sess.Project = "hermes"
+	}
+	if !ss.startedAt.IsZero() {
+		sess.StartedAt = ss.startedAt
+	}
+	if !ss.endedAt.IsZero() {
+		sess.EndedAt = ss.endedAt
+	}
+	if ss.parentSessionID != "" {
+		sess.ParentSessionID = "hermes:" + ss.parentSessionID
+		sess.RelationshipType = RelContinuation
+	}
+	sess.SourceSessionID = ss.id
+	sess.SourceVersion = "hermes-state-db"
+	sess.DisplayName = ss.title
+	if selectedPath != "" {
+		if info, err := os.Stat(selectedPath); err == nil {
+			sess.File = FileInfo{
+				Path:  selectedPath,
+				Size:  info.Size(),
+				Mtime: info.ModTime().UnixNano(),
+			}
+		}
+	}
+}
+
+func hermesUsageEvents(
+	ss hermesStateSession, sessionID string,
+) []ParsedUsageEvent {
+	if ss.model == "" {
+		return nil
+	}
+	if ss.inputTokens == 0 && ss.outputTokens == 0 &&
+		ss.cacheReadTokens == 0 && ss.cacheWriteTokens == 0 &&
+		ss.reasoningTokens == 0 && !ss.estimatedCost.Valid &&
+		!ss.actualCost.Valid {
+		return nil
+	}
+	var cost *float64
+	if ss.actualCost.Valid {
+		v := ss.actualCost.Float64
+		cost = &v
+	} else if ss.estimatedCost.Valid {
+		v := ss.estimatedCost.Float64
+		cost = &v
+	}
+	return []ParsedUsageEvent{{
+		SessionID:                sessionID,
+		Source:                   "session",
+		Model:                    ss.model,
+		InputTokens:              max(ss.inputTokens, 0),
+		OutputTokens:             max(ss.outputTokens, 0),
+		CacheCreationInputTokens: max(ss.cacheWriteTokens, 0),
+		CacheReadInputTokens:     max(ss.cacheReadTokens, 0),
+		ReasoningTokens:          max(ss.reasoningTokens, 0),
+		CostUSD:                  cost,
+		CostStatus:               ss.costStatus,
+		CostSource:               ss.costSource,
+		OccurredAt:               timeString(ss.endedAt, ss.startedAt),
+		DedupKey:                 "session:" + sessionID,
+	}}
+}
+
+func convertHermesStateMessages(
+	stateMessages []hermesStateMessage,
+) []ParsedMessage {
+	msgs := make([]ParsedMessage, 0, len(stateMessages))
+	for _, hm := range stateMessages {
+		ordinal := len(msgs)
+		switch hm.role {
+		case "user":
+			content := strings.TrimSpace(hm.content)
+			if content == "" {
+				continue
+			}
+			display := stripHermesSkillPrefix(content)
+			isCompact := isHermesCompactBoundary(display)
+			msgs = append(msgs, ParsedMessage{
+				Ordinal:           ordinal,
+				Role:              RoleUser,
+				Content:           display,
+				Timestamp:         hm.timestamp,
+				ContentLength:     len(content),
+				IsSystem:          isCompact,
+				SourceType:        sourceTypeIf(isCompact, "system"),
+				SourceSubtype:     sourceTypeIf(isCompact, "compact_boundary"),
+				IsCompactBoundary: isCompact,
+			})
+		case "assistant":
+			content := strings.TrimSpace(hm.content)
+			reasoning := firstNonEmptyHermes(
+				hm.reasoning, hm.reasoningContent,
+				hm.reasoningDetails, hm.codexReasoningItems,
+			)
+			display := content
+			hasThinking := reasoning != ""
+			if hasThinking {
+				display = "[Thinking]\n" + reasoning +
+					"\n[/Thinking]\n" + display
+			}
+			var toolCalls []ParsedToolCall
+			if gjson.Valid(hm.toolCalls) {
+				gjson.Parse(hm.toolCalls).ForEach(
+					func(_, tc gjson.Result) bool {
+						name := tc.Get("function.name").Str
+						if name == "" {
+							name = tc.Get("name").Str
+						}
+						if name != "" {
+							toolCalls = append(toolCalls, ParsedToolCall{
+								ToolUseID: tc.Get("id").Str,
+								ToolName:  name,
+								Category:  NormalizeToolCategory(name),
+								InputJSON: tc.Get("function.arguments").Str,
+							})
+						}
+						return true
+					},
+				)
+			}
+			if display == "" && len(toolCalls) == 0 {
+				continue
+			}
+			msgs = append(msgs, ParsedMessage{
+				Ordinal:       ordinal,
+				Role:          RoleAssistant,
+				Content:       display,
+				Timestamp:     hm.timestamp,
+				HasThinking:   hasThinking,
+				HasToolUse:    len(toolCalls) > 0,
+				ContentLength: len(content) + len(reasoning),
+				ToolCalls:     toolCalls,
+			})
+		case "tool":
+			if hm.toolCallID == "" {
+				continue
+			}
+			quoted, _ := json.Marshal(hm.content)
+			msgs = append(msgs, ParsedMessage{
+				Ordinal:       ordinal,
+				Role:          RoleUser,
+				Timestamp:     hm.timestamp,
+				ContentLength: len(hm.content),
+				ToolResults: []ParsedToolResult{{
+					ToolUseID:     hm.toolCallID,
+					ContentRaw:    string(quoted),
+					ContentLength: len(hm.content),
+				}},
+			})
+		}
+	}
+	return msgs
+}
+
+func hermesMessageQuality(msgs []ParsedMessage) int {
+	score := len(msgs) * 1000
+	for _, msg := range msgs {
+		score += len(msg.Content)
+		if len(msg.ToolCalls) > 0 {
+			score += 100
+		}
+		if msg.HasThinking {
+			score += 50
+		}
+	}
+	return score
+}
+
+func hermesStateQuality(msgs []hermesStateMessage) int {
+	score := len(msgs) * 1000
+	for _, msg := range msgs {
+		score += len(msg.content)
+		if msg.toolCalls != "" {
+			score += 100
+		}
+		if firstNonEmptyHermes(
+			msg.reasoning, msg.reasoningContent,
+			msg.reasoningDetails, msg.codexReasoningItems,
+		) != "" {
+			score += 50
+		}
+	}
+	return score
+}
+
+func hermesUnixTime(v float64) time.Time {
+	if v <= 0 {
+		return time.Time{}
+	}
+	sec, frac := math.Modf(v)
+	return time.Unix(int64(sec), int64(frac*1_000_000_000)).UTC()
+}
+
+func timeString(primary, fallback time.Time) string {
+	if !primary.IsZero() {
+		return primary.Format(time.RFC3339Nano)
+	}
+	if !fallback.IsZero() {
+		return fallback.Format(time.RFC3339Nano)
+	}
+	return ""
+}
+
+func countHermesUsers(msgs []ParsedMessage) int {
+	count := 0
+	for _, msg := range msgs {
+		if msg.Role == RoleUser && !msg.IsSystem {
+			count++
+		}
+	}
+	return count
+}
+
+func firstHermesMessage(msgs []ParsedMessage) string {
+	for _, msg := range msgs {
+		if msg.Role == RoleUser && !msg.IsSystem &&
+			strings.TrimSpace(msg.Content) != "" {
+			return truncate(
+				strings.ReplaceAll(msg.Content, "\n", " "),
+				300,
+			)
+		}
+	}
+	return ""
+}
+
+func isHermesCompactBoundary(s string) bool {
+	s = strings.TrimSpace(s)
+	return strings.HasPrefix(s, "[CONTEXT COMPACTION - REFERENCE ONLY]") ||
+		strings.HasPrefix(s, "[CONTEXT COMPACTION – REFERENCE ONLY]")
+}
+
+func sourceTypeIf(ok bool, value string) string {
+	if ok {
+		return value
+	}
+	return ""
+}
+
+func firstNonEmptyHermes(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 // HermesSessionID extracts the session ID from a Hermes filename.
 // "20260403_153620_5a3e2ff1.jsonl" -> "20260403_153620_5a3e2ff1"
 func HermesSessionID(name string) string {
@@ -436,6 +960,12 @@ func HermesSessionID(name string) string {
 func DiscoverHermesSessions(sessionsDir string) []DiscoveredFile {
 	if sessionsDir == "" {
 		return nil
+	}
+	if stateDB, _, ok := hermesStatePaths(sessionsDir); ok {
+		return []DiscoveredFile{{
+			Path:  stateDB,
+			Agent: AgentHermes,
+		}}
 	}
 
 	entries, err := os.ReadDir(sessionsDir)

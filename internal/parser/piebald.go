@@ -15,8 +15,9 @@ const piebaldDBFilename = "app.db"
 
 // PiebaldSession bundles a parsed Piebald chat with its messages.
 type PiebaldSession struct {
-	Session  ParsedSession
-	Messages []ParsedMessage
+	Session     ParsedSession
+	Messages    []ParsedMessage
+	UsageEvents []ParsedUsageEvent
 }
 
 // PiebaldSessionMeta is lightweight metadata for a Piebald chat.

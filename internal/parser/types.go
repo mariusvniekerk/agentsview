@@ -554,6 +554,26 @@ type ParsedMessage struct {
 	tokenPresenceKnown bool
 }
 
+// ParsedUsageEvent records session-level usage emitted by parsers
+// when an agent exposes aggregate accounting instead of per-message
+// token_usage rows.
+type ParsedUsageEvent struct {
+	SessionID                string
+	MessageOrdinal           *int
+	Source                   string
+	Model                    string
+	InputTokens              int
+	OutputTokens             int
+	CacheCreationInputTokens int
+	CacheReadInputTokens     int
+	ReasoningTokens          int
+	CostUSD                  *float64
+	CostStatus               string
+	CostSource               string
+	OccurredAt               string
+	DedupKey                 string
+}
+
 // accumulateMessageTokenUsage rolls up explicit per-message token
 // metadata into session totals without inferring presence from raw
 // numeric values alone.
@@ -654,8 +674,9 @@ func (s ParsedSession) TokenCoverage(
 
 // ParseResult pairs a parsed session with its messages.
 type ParseResult struct {
-	Session  ParsedSession
-	Messages []ParsedMessage
+	Session     ParsedSession
+	Messages    []ParsedMessage
+	UsageEvents []ParsedUsageEvent
 }
 
 // InferRelationshipTypes sets RelationshipType on results that have
