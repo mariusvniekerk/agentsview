@@ -13,6 +13,7 @@ import (
 type SessionBatchWrite struct {
 	Session         Session
 	Messages        []Message
+	UsageEvents     []UsageEvent
 	Signals         SessionSignalUpdate
 	DataVersion     int
 	ReplaceMessages bool
@@ -210,6 +211,11 @@ func writeOneSessionBatchTx(
 			"upserting session %s: %w",
 			write.Session.ID, err,
 		)
+	}
+	if err := replaceSessionUsageEventsTx(
+		tx, write.Session.ID, write.UsageEvents,
+	); err != nil {
+		return 0, err
 	}
 
 	msgs := write.Messages

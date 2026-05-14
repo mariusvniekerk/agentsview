@@ -73,6 +73,16 @@ func (db *DB) ReplaceSessionUsageEvents(
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if err := replaceSessionUsageEventsTx(tx, sessionID, events); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func replaceSessionUsageEventsTx(
+	tx *sql.Tx, sessionID string, events []UsageEvent,
+) error {
 	if _, err := tx.Exec(
 		`DELETE FROM usage_events WHERE session_id = ?`,
 		sessionID,
@@ -115,8 +125,7 @@ func (db *DB) ReplaceSessionUsageEvents(
 			return fmt.Errorf("inserting usage event: %w", err)
 		}
 	}
-
-	return tx.Commit()
+	return nil
 }
 
 // GetUsageEvents returns usage events for one session in stable order.

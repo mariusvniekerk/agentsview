@@ -2199,6 +2199,7 @@ func (e *Engine) collectAndBatch(
 				pending = append(pending, pendingWrite{
 					sess:         pr.Session,
 					msgs:         pr.Messages,
+					usageEvents:  pr.UsageEvents,
 					forceReplace: r.forceReplace,
 				})
 			}
@@ -3322,6 +3323,16 @@ func (e *Engine) processHermes(
 		return processResult{skip: true}
 	}
 
+	if filepath.Base(file.Path) == "state.db" {
+		results, err := parser.ParseHermesArchive(
+			file.Path, file.Project, e.machine,
+		)
+		if err != nil {
+			return processResult{err: err}
+		}
+		return processResult{results: results, forceReplace: true}
+	}
+
 	sess, msgs, err := parser.ParseHermesSession(
 		file.Path, file.Project, e.machine,
 	)
@@ -3647,6 +3658,7 @@ func isAutomatedFromSession(s db.Session) bool {
 type pendingWrite struct {
 	sess         parser.ParsedSession
 	msgs         []parser.ParsedMessage
+	usageEvents  []parser.ParsedUsageEvent
 	forceReplace bool
 }
 
@@ -3758,6 +3770,16 @@ func (e *Engine) writeBatch(
 			failedSessions++
 			continue
 		}
+		if err := e.db.ReplaceSessionUsageEvents(
+			s.ID, toDBUsageEvents(s.ID, pw.usageEvents),
+		); err != nil {
+			log.Printf(
+				"write usage events for %s: %v",
+				s.ID, err,
+			)
+			failedSessions++
+			continue
+		}
 
 		// Advance data_version only after the message write
 		// succeeded. UpsertSession deliberately does not
@@ -3837,6 +3859,7 @@ func (e *Engine) writeBatchBulk(
 		writes = append(writes, db.SessionBatchWrite{
 			Session:         s,
 			Messages:        msgs,
+			UsageEvents:     toDBUsageEvents(s.ID, pw.usageEvents),
 			Signals:         computeSignalsFromMessages(s, msgs),
 			DataVersion:     db.CurrentDataVersion(),
 			ReplaceMessages: replaceMessages,
@@ -4019,6 +4042,15 @@ func (e *Engine) writeSessionFullWithResolver(
 	); err != nil {
 		log.Printf(
 			"replace messages for %s: %v",
+			s.ID, err,
+		)
+		return err
+	}
+	if err := e.db.ReplaceSessionUsageEvents(
+		s.ID, toDBUsageEvents(s.ID, pw.usageEvents),
+	); err != nil {
+		log.Printf(
+			"replace usage events for %s: %v",
 			s.ID, err,
 		)
 		return err
@@ -4324,6 +4356,35 @@ func toDBMessages(pw pendingWrite, blocked map[string]bool) []db.Message {
 		}
 	}
 	return pairAndFilter(msgs, blocked)
+}
+
+func toDBUsageEvents(
+	sessionID string, events []parser.ParsedUsageEvent,
+) []db.UsageEvent {
+	out := make([]db.UsageEvent, 0, len(events))
+	for _, ev := range events {
+		sid := ev.SessionID
+		if sid == "" {
+			sid = sessionID
+		}
+		out = append(out, db.UsageEvent{
+			SessionID:                sid,
+			MessageOrdinal:           ev.MessageOrdinal,
+			Source:                   ev.Source,
+			Model:                    ev.Model,
+			InputTokens:              ev.InputTokens,
+			OutputTokens:             ev.OutputTokens,
+			CacheCreationInputTokens: ev.CacheCreationInputTokens,
+			CacheReadInputTokens:     ev.CacheReadInputTokens,
+			ReasoningTokens:          ev.ReasoningTokens,
+			CostUSD:                  ev.CostUSD,
+			CostStatus:               ev.CostStatus,
+			CostSource:               ev.CostSource,
+			OccurredAt:               ev.OccurredAt,
+			DedupKey:                 ev.DedupKey,
+		})
+	}
+	return out
 }
 
 // postFilterCounts returns the total and user message counts
@@ -4672,7 +4733,11 @@ func (e *Engine) SyncSingleSession(sessionID string) (err error) {
 
 	for _, pr := range res.results {
 		if err := e.writeSessionFull(
-			pendingWrite{sess: pr.Session, msgs: pr.Messages},
+			pendingWrite{
+				sess:        pr.Session,
+				msgs:        pr.Messages,
+				usageEvents: pr.UsageEvents,
+			},
 		); err != nil &&
 			!isIntentionalSessionSkip(err) &&
 			!errors.Is(err, errSessionPreserved) {
@@ -5139,7 +5204,11 @@ func (e *Engine) syncOnePiebald(
 			continue
 		}
 		for _, result := range results {
-			pending = append(pending, pendingWrite{sess: result.Session, msgs: result.Messages})
+			pending = append(pending, pendingWrite{
+				sess:        result.Session,
+				msgs:        result.Messages,
+				usageEvents: result.UsageEvents,
+			})
 		}
 	}
 	return pending
@@ -5173,7 +5242,11 @@ func (e *Engine) syncSinglePiebald(
 		}
 		for _, result := range results {
 			if err := e.writeSessionFull(
-				pendingWrite{sess: result.Session, msgs: result.Messages},
+				pendingWrite{
+					sess:        result.Session,
+					msgs:        result.Messages,
+					usageEvents: result.UsageEvents,
+				},
 			); err != nil && !errors.Is(err, db.ErrSessionExcluded) {
 				return fmt.Errorf("write session %s: %w", result.Session.ID, err)
 			}
