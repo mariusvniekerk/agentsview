@@ -220,6 +220,13 @@ func (s *Sync) Push(
 
 	var sessions []db.Session
 	for _, sess := range sessionByID {
+		if _, ok := sessionFingerprints[sess.ID]; !ok {
+			fp, err := s.sessionPushFingerprint(ctx, sess)
+			if err != nil {
+				return result, err
+			}
+			sessionFingerprints[sess.ID] = fp
+		}
 		sessions = append(sessions, sess)
 	}
 	sort.Slice(sessions, func(i, j int) bool {
