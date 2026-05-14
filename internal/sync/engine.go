@@ -4649,6 +4649,15 @@ func (e *Engine) SyncSingleSession(sessionID string) (err error) {
 		}
 		return err
 	}
+	if def.Type == parser.AgentHermes {
+		ok, err := e.syncSingleHermesArchive(sessionID, path)
+		if err != nil {
+			return err
+		}
+		if ok {
+			return nil
+		}
+	}
 
 	agent := def.Type
 
@@ -4756,6 +4765,52 @@ func (e *Engine) SyncSingleSession(sessionID string) (err error) {
 	}
 
 	return nil
+}
+
+func (e *Engine) syncSingleHermesArchive(
+	sessionID, path string,
+) (bool, error) {
+	stateDB := ""
+	if filepath.Base(path) == "state.db" {
+		stateDB = path
+	} else if filepath.Base(filepath.Dir(path)) == "sessions" {
+		candidate := filepath.Join(
+			filepath.Dir(filepath.Dir(path)), "state.db",
+		)
+		if parser.IsRegularFile(candidate) {
+			stateDB = candidate
+		}
+	}
+	if stateDB == "" {
+		return false, nil
+	}
+
+	results, err := parser.ParseHermesArchive(
+		stateDB, "", e.machine,
+	)
+	if err != nil {
+		return true, err
+	}
+	for _, pr := range results {
+		if pr.Session.ID != sessionID {
+			continue
+		}
+		if err := e.writeSessionFull(pendingWrite{
+			sess:        pr.Session,
+			msgs:        pr.Messages,
+			usageEvents: pr.UsageEvents,
+		}); err != nil && !isIntentionalSessionSkip(err) &&
+			!errors.Is(err, errSessionPreserved) {
+			return true, fmt.Errorf(
+				"write session %s: %w", pr.Session.ID, err,
+			)
+		}
+		return true, nil
+	}
+	return true, fmt.Errorf(
+		"session %s not found in Hermes archive %s",
+		sessionID, stateDB,
+	)
 }
 
 func (e *Engine) applyWorktreeMappingToSingleSession(

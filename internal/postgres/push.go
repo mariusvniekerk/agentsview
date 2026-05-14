@@ -1222,7 +1222,7 @@ func pgUsageEventFingerprint(
 			occurred_at, dedup_key
 		 FROM usage_events
 		 WHERE session_id = $1
-		 ORDER BY COALESCE(occurred_at::text, ''), id`,
+		 ORDER BY occurred_at NULLS FIRST, id`,
 		sessionID,
 	)
 	if err != nil {

@@ -195,6 +195,46 @@ func TestParseHermesArchive_FallsBackToTranscriptsWhenStateDBUnreadable(
 	assert.Empty(t, res.UsageEvents)
 }
 
+func TestParseHermesArchive_UsesStateMessagesWhenJSONLIsLowerQuality(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	sessionsDir := filepath.Join(root, "sessions")
+	require.NoError(t, os.MkdirAll(sessionsDir, 0o755))
+	createHermesStateDB(t, root)
+	require.NoError(t, os.WriteFile(
+		filepath.Join(sessionsDir, "child.jsonl"),
+		[]byte(strings.Join([]string{
+			`{"role":"session_meta","platform":"discord","timestamp":"2026-05-14T10:00:00Z"}`,
+			`{"role":"user","content":"x","timestamp":"2026-05-14T10:01:00Z"}`,
+		}, "\n")),
+		0o644,
+	))
+
+	results, err := ParseHermesArchive(root, "", "local")
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+
+	res := results[0]
+	require.Len(t, res.Messages, 1)
+	assert.Equal(t, "state db only has one message", res.Messages[0].Content)
+	assert.Equal(t, "hermes-state-db", res.Session.SourceVersion)
+}
+
+func TestDiscoverHermesSessionsFindsTranscriptOnlyRoot(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	sessionsDir := filepath.Join(root, "sessions")
+	require.NoError(t, os.MkdirAll(sessionsDir, 0o755))
+	path := filepath.Join(sessionsDir, "session_child.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"messages":[]}`), 0o644))
+
+	files := DiscoverHermesSessions(root)
+	require.Len(t, files, 1)
+	assert.Equal(t, path, files[0].Path)
+}
+
 func TestParseHermesSession_CompactionBoundaryIsSystem(t *testing.T) {
 	sess, msgs := runHermesJSONTest(t, "", `{
 		"platform":"darwin",

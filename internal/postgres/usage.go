@@ -111,7 +111,7 @@ SELECT
 	s.agent,
 	s.machine,
 	s.user_message_count,
-	s.is_automated,
+	COALESCE(s.is_automated, false) AS is_automated,
 	COALESCE(s.ended_at, s.started_at, s.created_at) AS session_activity_at,
 	COALESCE(NULLIF(s.display_name, ''), NULLIF(s.first_message, ''), NULLIF(s.project, ''), s.id) AS display_name,
 	s.started_at
@@ -143,7 +143,7 @@ SELECT
 	s.agent,
 	s.machine,
 	s.user_message_count,
-	s.is_automated,
+	COALESCE(s.is_automated, false) AS is_automated,
 	COALESCE(s.ended_at, s.started_at, s.created_at) AS session_activity_at,
 	COALESCE(NULLIF(s.display_name, ''), NULLIF(s.first_message, ''), NULLIF(s.project, ''), s.id) AS display_name,
 	s.started_at

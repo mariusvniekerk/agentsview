@@ -678,8 +678,11 @@ func buildHermesStateResult(
 	}
 	if sess == nil && IsRegularFile(jsonlPath) {
 		sess, msgs, err = parseHermesJSONLSession(jsonlPath, project, machine)
-		if err == nil && sess != nil {
+		if err == nil && sess != nil &&
+			(hermesMessageQuality(msgs) >= hermesStateQuality(stateMessages) || len(stateMessages) == 0) {
 			selectedPath = jsonlPath
+		} else {
+			sess, msgs = nil, nil
 		}
 	}
 	if sess == nil {
@@ -986,6 +989,10 @@ func DiscoverHermesSessions(sessionsDir string) []DiscoveredFile {
 			Path:  stateDB,
 			Agent: AgentHermes,
 		}}
+	}
+	childSessions := filepath.Join(sessionsDir, "sessions")
+	if info, err := os.Stat(childSessions); err == nil && info.IsDir() {
+		return discoverHermesTranscriptFiles(childSessions)
 	}
 	return discoverHermesTranscriptFiles(sessionsDir)
 }
