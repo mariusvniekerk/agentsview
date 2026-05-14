@@ -38,6 +38,7 @@ struct SidecarState {
     backend_port: Mutex<Option<u16>>,
     active_generation: Mutex<Option<u64>>,
     stopping_generation: Mutex<Option<u64>>,
+    restart_after_stop_timeout_generation: Mutex<Option<u64>>,
     terminated_generation: Mutex<u64>,
     termination: Condvar,
     next_generation: AtomicU64,
@@ -557,6 +558,9 @@ fn save_sidecar(app: &AppHandle, child: CommandChild) -> Result<u64, DynError> {
     if let Ok(mut stopping_generation) = state.stopping_generation.lock() {
         *stopping_generation = None;
     }
+    if let Ok(mut restart_generation) = state.restart_after_stop_timeout_generation.lock() {
+        *restart_generation = None;
+    }
     Ok(generation)
 }
 
@@ -635,6 +639,23 @@ fn clear_stopping_generation_if_current(state: &SidecarState, generation: u64) {
     if *guard == Some(generation) {
         *guard = None;
     }
+}
+
+fn mark_restart_after_stop_timeout(state: &SidecarState, generation: u64) {
+    if let Ok(mut guard) = state.restart_after_stop_timeout_generation.lock() {
+        *guard = Some(generation);
+    }
+}
+
+fn take_restart_after_stop_timeout_if_current(state: &SidecarState, generation: u64) -> bool {
+    let Ok(mut guard) = state.restart_after_stop_timeout_generation.lock() else {
+        return false;
+    };
+    if *guard == Some(generation) {
+        *guard = None;
+        return true;
+    }
+    false
 }
 
 fn record_sidecar_terminated(state: &SidecarState, generation: u64) {
@@ -728,12 +749,18 @@ fn forward_sidecar_logs(mut rx: CommandRx, window: WebviewWindow, generation: u6
                         "[agentsview] sidecar terminated (code: {:?}, signal: {:?})",
                         payload.code, payload.signal
                     );
-                    let state = window.app_handle().state::<SidecarState>();
+                    let handle = window.app_handle().clone();
+                    let state = handle.state::<SidecarState>();
+                    let restart_after_stop_timeout =
+                        take_restart_after_stop_timeout_if_current(&state, generation);
                     if handle_sidecar_terminated(&state, startup_handled.as_ref(), generation) {
                         let _ = window.eval(
                             "window.__setStatus(\
                              'AgentsView backend exited before startup completed.');",
                         );
+                    }
+                    if restart_after_stop_timeout {
+                        restart_backend_after_update(handle);
                     }
                     break;
                 }
@@ -1248,6 +1275,7 @@ fn finish_backend_stop_wait(
         clear_stopping_generation_if_current(state, generation);
         clear_sidecar_port(app);
     } else {
+        mark_restart_after_stop_timeout(state, generation);
         eprintln!("[agentsview] timed out waiting for sidecar to stop before update install");
     }
     terminated
@@ -1522,6 +1550,17 @@ mod tests {
         // Termination handling is idempotent for state and should only
         // report first-time transition once.
         assert!(!handle_sidecar_terminated(&state, &startup_handled, 1));
+    }
+
+    #[test]
+    fn restart_after_stop_timeout_is_consumed_for_matching_generation() {
+        let state = SidecarState::default();
+
+        mark_restart_after_stop_timeout(&state, 2);
+
+        assert!(!take_restart_after_stop_timeout_if_current(&state, 1));
+        assert!(take_restart_after_stop_timeout_if_current(&state, 2));
+        assert!(!take_restart_after_stop_timeout_if_current(&state, 2));
     }
 
     #[test]
