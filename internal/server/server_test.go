@@ -86,7 +86,7 @@ func setupWithServerOpts(
 	opts ...setupOption,
 ) *testEnv {
 	t.Helper()
-	dir := t.TempDir()
+	dir := tempDirWithRetryCleanup(t)
 	dbPath := filepath.Join(dir, "test.db")
 
 	database, err := db.Open(dbPath)
@@ -179,7 +179,7 @@ func setupWithServerOpts(
 // engine or live-refresh broadcaster.
 func setupPGMode(t *testing.T) *testEnv {
 	t.Helper()
-	dir := t.TempDir()
+	dir := tempDirWithRetryCleanup(t)
 	dbPath := filepath.Join(dir, "test.db")
 
 	database, err := db.Open(dbPath)
@@ -227,6 +227,26 @@ func setupPGMode(t *testing.T) *testEnv {
 		broadcaster: nil,
 		dataDir:     dir,
 	}
+}
+
+func tempDirWithRetryCleanup(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "agentsview-server-test-*")
+	if err != nil {
+		t.Fatalf("creating temp dir: %v", err)
+	}
+	t.Cleanup(func() {
+		var removeErr error
+		for range 20 {
+			removeErr = os.RemoveAll(dir)
+			if removeErr == nil {
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		t.Errorf("removing temp dir %s: %v", dir, removeErr)
+	})
+	return dir
 }
 
 func (te *testEnv) writeProjectFile(
