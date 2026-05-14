@@ -138,6 +138,35 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user_message_count
 CREATE INDEX IF NOT EXISTS idx_sessions_agent
     ON sessions(agent);
 
+-- Session-level usage events. These complement message-level
+-- messages.token_usage rows for agents that only expose aggregate
+-- session accounting.
+CREATE TABLE IF NOT EXISTS usage_events (
+    id INTEGER PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    message_ordinal INTEGER,
+    source TEXT NOT NULL,
+    model TEXT NOT NULL,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_read_input_tokens INTEGER NOT NULL DEFAULT 0,
+    reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+    cost_usd REAL,
+    cost_status TEXT NOT NULL DEFAULT '',
+    cost_source TEXT NOT NULL DEFAULT '',
+    occurred_at TEXT,
+    dedup_key TEXT NOT NULL DEFAULT ''
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_events_dedup
+    ON usage_events(session_id, source, dedup_key)
+    WHERE dedup_key != '';
+CREATE INDEX IF NOT EXISTS idx_usage_events_session
+    ON usage_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_usage_events_occurred
+    ON usage_events(occurred_at);
+
 -- Tool calls table
 CREATE TABLE IF NOT EXISTS tool_calls (
     id         INTEGER PRIMARY KEY,

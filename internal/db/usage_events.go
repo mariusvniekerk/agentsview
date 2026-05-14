@@ -1,0 +1,174 @@
+package db
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+)
+
+// UsageEvent records token and cost accounting that does not belong
+// to a single message row. Hermes session-level usage is the first
+// source, but the shape intentionally mirrors usage query totals.
+type UsageEvent struct {
+	ID                       int64
+	SessionID                string
+	MessageOrdinal           *int
+	Source                   string
+	Model                    string
+	InputTokens              int
+	OutputTokens             int
+	CacheCreationInputTokens int
+	CacheReadInputTokens     int
+	ReasoningTokens          int
+	CostUSD                  *float64
+	CostStatus               string
+	CostSource               string
+	OccurredAt               string
+	DedupKey                 string
+}
+
+func (db *DB) ensureUsageEventsSchemaLocked(w *sql.DB) error {
+	if _, err := w.Exec(`
+		CREATE TABLE IF NOT EXISTS usage_events (
+			id INTEGER PRIMARY KEY,
+			session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+			message_ordinal INTEGER,
+			source TEXT NOT NULL,
+			model TEXT NOT NULL,
+			input_tokens INTEGER NOT NULL DEFAULT 0,
+			output_tokens INTEGER NOT NULL DEFAULT 0,
+			cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
+			cache_read_input_tokens INTEGER NOT NULL DEFAULT 0,
+			reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+			cost_usd REAL,
+			cost_status TEXT NOT NULL DEFAULT '',
+			cost_source TEXT NOT NULL DEFAULT '',
+			occurred_at TEXT,
+			dedup_key TEXT NOT NULL DEFAULT ''
+		);
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_events_dedup
+			ON usage_events(session_id, source, dedup_key)
+			WHERE dedup_key != '';
+		CREATE INDEX IF NOT EXISTS idx_usage_events_session
+			ON usage_events(session_id);
+		CREATE INDEX IF NOT EXISTS idx_usage_events_occurred
+			ON usage_events(occurred_at);
+	`); err != nil {
+		return fmt.Errorf("creating usage_events: %w", err)
+	}
+	return nil
+}
+
+// ReplaceSessionUsageEvents replaces all usage events for one session
+// in a single transaction.
+func (db *DB) ReplaceSessionUsageEvents(
+	sessionID string, events []UsageEvent,
+) error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	tx, err := db.getWriter().Begin()
+	if err != nil {
+		return fmt.Errorf("beginning usage events tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.Exec(
+		`DELETE FROM usage_events WHERE session_id = ?`,
+		sessionID,
+	); err != nil {
+		return fmt.Errorf("deleting usage events: %w", err)
+	}
+
+	for _, ev := range events {
+		if ev.SessionID == "" {
+			ev.SessionID = sessionID
+		}
+		if ev.SessionID != sessionID {
+			return fmt.Errorf(
+				"usage event session_id %q does not match %q",
+				ev.SessionID, sessionID,
+			)
+		}
+		var ordinal any
+		if ev.MessageOrdinal != nil {
+			ordinal = *ev.MessageOrdinal
+		}
+		var cost any
+		if ev.CostUSD != nil {
+			cost = *ev.CostUSD
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO usage_events (
+				session_id, message_ordinal, source, model,
+				input_tokens, output_tokens,
+				cache_creation_input_tokens, cache_read_input_tokens,
+				reasoning_tokens, cost_usd, cost_status, cost_source,
+				occurred_at, dedup_key
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			ev.SessionID, ordinal, ev.Source, ev.Model,
+			ev.InputTokens, ev.OutputTokens,
+			ev.CacheCreationInputTokens, ev.CacheReadInputTokens,
+			ev.ReasoningTokens, cost, ev.CostStatus, ev.CostSource,
+			ev.OccurredAt, ev.DedupKey,
+		); err != nil {
+			return fmt.Errorf("inserting usage event: %w", err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+// GetUsageEvents returns usage events for one session in stable order.
+func (db *DB) GetUsageEvents(
+	ctx context.Context, sessionID string,
+) ([]UsageEvent, error) {
+	rows, err := db.getReader().QueryContext(ctx, `
+		SELECT id, session_id, message_ordinal, source, model,
+			input_tokens, output_tokens,
+			cache_creation_input_tokens, cache_read_input_tokens,
+			reasoning_tokens, cost_usd, cost_status, cost_source,
+			occurred_at, dedup_key
+		FROM usage_events
+		WHERE session_id = ?
+		ORDER BY COALESCE(occurred_at, ''), id`,
+		sessionID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("querying usage events: %w", err)
+	}
+	defer rows.Close()
+
+	var out []UsageEvent
+	for rows.Next() {
+		var ev UsageEvent
+		var ordinal sql.NullInt64
+		var cost sql.NullFloat64
+		var occurred sql.NullString
+		if err := rows.Scan(
+			&ev.ID, &ev.SessionID, &ordinal, &ev.Source, &ev.Model,
+			&ev.InputTokens, &ev.OutputTokens,
+			&ev.CacheCreationInputTokens, &ev.CacheReadInputTokens,
+			&ev.ReasoningTokens, &cost, &ev.CostStatus,
+			&ev.CostSource, &occurred, &ev.DedupKey,
+		); err != nil {
+			return nil, fmt.Errorf("scanning usage event: %w", err)
+		}
+		if ordinal.Valid {
+			v := int(ordinal.Int64)
+			ev.MessageOrdinal = &v
+		}
+		if cost.Valid {
+			v := cost.Float64
+			ev.CostUSD = &v
+		}
+		if occurred.Valid {
+			ev.OccurredAt = occurred.String
+		}
+		out = append(out, ev)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating usage events: %w", err)
+	}
+	return out, nil
+}

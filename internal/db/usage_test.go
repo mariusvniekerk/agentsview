@@ -34,6 +34,74 @@ func TestGetDailyUsageEmpty(t *testing.T) {
 	}
 }
 
+func TestUsageEventsReplaceAndList(t *testing.T) {
+	d := testDB(t)
+	ctx := context.Background()
+
+	insertSession(t, d, "hermes:event", "proj", func(s *Session) {
+		s.Agent = "hermes"
+		s.StartedAt = new("2026-05-14T10:00:00Z")
+		s.UserMessageCount = 2
+	})
+
+	cost := 0.02
+	ordinal := 3
+	events := []UsageEvent{{
+		SessionID:                "hermes:event",
+		MessageOrdinal:           &ordinal,
+		Source:                   "session",
+		Model:                    "gpt-5.4",
+		InputTokens:              100,
+		OutputTokens:             50,
+		CacheCreationInputTokens: 7,
+		CacheReadInputTokens:     11,
+		ReasoningTokens:          13,
+		CostUSD:                  &cost,
+		CostStatus:               "estimated",
+		CostSource:               "hermes",
+		OccurredAt:               "2026-05-14T10:05:00Z",
+		DedupKey:                 "session:hermes:event",
+	}}
+	if err := d.ReplaceSessionUsageEvents("hermes:event", events); err != nil {
+		t.Fatalf("ReplaceSessionUsageEvents: %v", err)
+	}
+
+	got, err := d.GetUsageEvents(ctx, "hermes:event")
+	if err != nil {
+		t.Fatalf("GetUsageEvents: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d events, want 1", len(got))
+	}
+	if got[0].InputTokens != 100 ||
+		got[0].OutputTokens != 50 ||
+		got[0].CacheCreationInputTokens != 7 ||
+		got[0].CacheReadInputTokens != 11 ||
+		got[0].ReasoningTokens != 13 {
+		t.Fatalf("token fields not round-tripped: %#v", got[0])
+	}
+	if got[0].MessageOrdinal == nil || *got[0].MessageOrdinal != 3 {
+		t.Fatalf("MessageOrdinal = %#v, want 3", got[0].MessageOrdinal)
+	}
+	if got[0].CostUSD == nil || *got[0].CostUSD != cost {
+		t.Fatalf("CostUSD = %#v, want %v", got[0].CostUSD, cost)
+	}
+	if got[0].DedupKey != "session:hermes:event" {
+		t.Fatalf("DedupKey = %q", got[0].DedupKey)
+	}
+
+	if err := d.ReplaceSessionUsageEvents("hermes:event", nil); err != nil {
+		t.Fatalf("ReplaceSessionUsageEvents clear: %v", err)
+	}
+	got, err = d.GetUsageEvents(ctx, "hermes:event")
+	if err != nil {
+		t.Fatalf("GetUsageEvents after clear: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("usage events after clear = %d, want 0", len(got))
+	}
+}
+
 func TestGetDailyUsageWithData(t *testing.T) {
 	d := testDB(t)
 	ctx := context.Background()

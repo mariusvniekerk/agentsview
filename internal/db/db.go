@@ -625,6 +625,10 @@ func (db *DB) migrateColumns() error {
 		)
 	}
 
+	if err := db.ensureUsageEventsSchemaLocked(w); err != nil {
+		return err
+	}
+
 	runRepair, err := db.shouldRunTokenCoverageRepairLocked(w)
 	if err != nil {
 		return err
