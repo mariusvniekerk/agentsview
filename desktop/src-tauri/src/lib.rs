@@ -807,14 +807,14 @@ fn forward_sidecar_logs(mut rx: CommandRx, window: WebviewWindow, generation: u6
                     );
                     let handle = window.app_handle().clone();
                     let state = handle.state::<SidecarState>();
-                    let restart_after_stop_timeout =
-                        take_restart_after_stop_timeout_for_terminated_sidecar(&state, generation);
                     if handle_sidecar_terminated(&state, startup_handled.as_ref(), generation) {
                         let _ = window.eval(
                             "window.__setStatus(\
                              'AgentsView backend exited before startup completed.');",
                         );
                     }
+                    let restart_after_stop_timeout =
+                        take_restart_after_stop_timeout_for_terminated_sidecar(&state, generation);
                     if restart_after_stop_timeout {
                         restart_backend_after_update(handle);
                     }
