@@ -89,6 +89,16 @@ func TestUsageEventsReplaceAndList(t *testing.T) {
 	if got[0].DedupKey != "session:hermes:event" {
 		t.Fatalf("DedupKey = %q", got[0].DedupKey)
 	}
+	fps, err := d.UsageEventFingerprints([]string{"hermes:event", "missing"})
+	if err != nil {
+		t.Fatalf("UsageEventFingerprints: %v", err)
+	}
+	if fps["hermes:event"] == "" {
+		t.Fatal("expected non-empty usage event fingerprint")
+	}
+	if fps["missing"] != "" {
+		t.Fatalf("missing fingerprint = %q, want empty", fps["missing"])
+	}
 
 	if err := d.ReplaceSessionUsageEvents("hermes:event", nil); err != nil {
 		t.Fatalf("ReplaceSessionUsageEvents clear: %v", err)

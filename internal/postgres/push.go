@@ -147,12 +147,10 @@ func (s *Sync) Push(
 	}
 
 	var priorFingerprints map[string]string
-	var boundaryState map[string]string
-	var boundaryOK bool
 	sessionFingerprints := make(map[string]string, len(sessionByID))
 	if !full {
 		var bErr error
-		priorFingerprints, boundaryState, boundaryOK, bErr = readBoundaryAndFingerprints(
+		priorFingerprints, _, _, bErr = readBoundaryAndFingerprints(
 			s.local, lastPush,
 		)
 		if bErr != nil {
@@ -161,7 +159,6 @@ func (s *Sync) Push(
 	}
 
 	if lastPush != "" {
-		ok := boundaryOK
 		windowStart, err := PreviousLocalSyncTimestamp(
 			lastPush,
 		)
@@ -185,16 +182,6 @@ func (s *Sync) Push(
 			if marker != lastPush {
 				continue
 			}
-			if ok {
-				fp, err := s.sessionPushFingerprint(ctx, sess)
-				if err != nil {
-					return result, err
-				}
-				sessionFingerprints[sess.ID] = fp
-				if boundaryState[sess.ID] == fp {
-					continue
-				}
-			}
 			if _, exists := sessionByID[sess.ID]; exists {
 				continue
 			}
@@ -202,17 +189,23 @@ func (s *Sync) Push(
 		}
 	}
 
+	usageFingerprints, err := s.local.UsageEventFingerprints(
+		mapKeys(sessionByID),
+	)
+	if err != nil {
+		return result, fmt.Errorf(
+			"computing local usage event fingerprints: %w", err,
+		)
+	}
+	for id, sess := range sessionByID {
+		sessionFingerprints[id] = sessionPushFingerprint(
+			sess, usageFingerprints[id],
+		)
+	}
+
 	if len(priorFingerprints) > 0 {
-		for id, sess := range sessionByID {
-			fp, ok := sessionFingerprints[id]
-			if !ok {
-				fp, err = s.sessionPushFingerprint(ctx, sess)
-				if err != nil {
-					return result, err
-				}
-				sessionFingerprints[id] = fp
-			}
-			if priorFingerprints[id] == fp {
+		for id := range sessionByID {
+			if priorFingerprints[id] == sessionFingerprints[id] {
 				delete(sessionByID, id)
 			}
 		}
@@ -220,13 +213,6 @@ func (s *Sync) Push(
 
 	var sessions []db.Session
 	for _, sess := range sessionByID {
-		if _, ok := sessionFingerprints[sess.ID]; !ok {
-			fp, err := s.sessionPushFingerprint(ctx, sess)
-			if err != nil {
-				return result, err
-			}
-			sessionFingerprints[sess.ID] = fp
-		}
 		sessions = append(sessions, sess)
 	}
 	sort.Slice(sessions, func(i, j int) bool {
@@ -581,6 +567,14 @@ func writePushBoundaryState(
 	return nil
 }
 
+func mapKeys(m map[string]db.Session) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
 func localSessionSyncMarker(sess db.Session) string {
 	marker, err := NormalizeLocalSyncTimestamp(sess.CreatedAt)
 	if err != nil || marker == "" {
@@ -628,19 +622,6 @@ func localSessionSyncMarker(sess db.Session) string {
 		marker = sess.CreatedAt
 	}
 	return marker
-}
-
-func (s *Sync) sessionPushFingerprint(
-	ctx context.Context, sess db.Session,
-) (string, error) {
-	usageFP, err := s.local.UsageEventFingerprint(sess.ID)
-	if err != nil {
-		return "", fmt.Errorf(
-			"computing local usage event fingerprint for %s: %w",
-			sess.ID, err,
-		)
-	}
-	return sessionPushFingerprint(sess, usageFP), nil
 }
 
 func sessionPushFingerprint(

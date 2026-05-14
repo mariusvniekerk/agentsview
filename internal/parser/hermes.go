@@ -708,9 +708,10 @@ func buildHermesStateResult(
 			sess, msgs = nil, nil
 		}
 	}
+	usageEvents := hermesUsageEvents(ss, "hermes:"+ss.id)
 	if sess == nil {
 		msgs = convertHermesStateMessages(stateMessages)
-		if len(msgs) == 0 {
+		if len(msgs) == 0 && len(usageEvents) == 0 {
 			return ParseResult{}, false
 		}
 		sess = &ParsedSession{
@@ -729,7 +730,7 @@ func buildHermesStateResult(
 	return ParseResult{
 		Session:     *sess,
 		Messages:    msgs,
-		UsageEvents: hermesUsageEvents(ss, sess.ID),
+		UsageEvents: usageEvents,
 	}, true
 }
 

@@ -134,28 +134,42 @@ func replaceSessionUsageEventsTx(
 }
 
 // GetUsageEvents returns usage events for one session in stable order.
-// UsageEventFingerprint returns exact ordered fingerprint of
-// stored usage events for one session. Used by PG push fast-paths
-// to detect usage-only changes without rewriting unchanged rows.
-func (db *DB) UsageEventFingerprint(sessionID string) (string, error) {
+// UsageEventFingerprints returns exact ordered fingerprints of
+// stored usage events keyed by session ID. Used by PG push fast-paths
+// to detect usage-only changes without N+1 queries.
+func (db *DB) UsageEventFingerprints(
+	sessionIDs []string,
+) (map[string]string, error) {
+	out := make(map[string]string, len(sessionIDs))
+	if len(sessionIDs) == 0 {
+		return out, nil
+	}
+	placeholders := make([]string, len(sessionIDs))
+	args := make([]any, len(sessionIDs))
+	for i, id := range sessionIDs {
+		placeholders[i] = "?"
+		args[i] = id
+		out[id] = ""
+	}
 	rows, err := db.getReader().Query(`
-		SELECT message_ordinal, source, model,
+		SELECT session_id, message_ordinal, source, model,
 			input_tokens, output_tokens,
 			cache_creation_input_tokens, cache_read_input_tokens,
 			reasoning_tokens, cost_usd, cost_status, cost_source,
 			occurred_at, dedup_key
 		FROM usage_events
-		WHERE session_id = ?
-		ORDER BY COALESCE(occurred_at, ''), id`,
-		sessionID,
+		WHERE session_id IN (`+strings.Join(placeholders, ",")+`)
+		ORDER BY session_id, COALESCE(occurred_at, ''), id`,
+		args...,
 	)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer rows.Close()
 
-	var b strings.Builder
+	builders := make(map[string]*strings.Builder)
 	for rows.Next() {
+		var sessionID string
 		var ordinal sql.NullInt64
 		var source, model, costStatus, costSource string
 		var inputTokens, outputTokens int
@@ -164,15 +178,20 @@ func (db *DB) UsageEventFingerprint(sessionID string) (string, error) {
 		var cost sql.NullFloat64
 		var occurredAt, dedupKey sql.NullString
 		if err := rows.Scan(
-			&ordinal, &source, &model,
+			&sessionID, &ordinal, &source, &model,
 			&inputTokens, &outputTokens,
 			&cacheCreationInputTokens, &cacheReadInputTokens,
 			&reasoningTokens, &cost, &costStatus, &costSource,
 			&occurredAt, &dedupKey,
 		); err != nil {
-			return "", err
+			return nil, err
 		}
-		fmt.Fprintf(&b,
+		b := builders[sessionID]
+		if b == nil {
+			b = &strings.Builder{}
+			builders[sessionID] = b
+		}
+		fmt.Fprintf(b,
 			"%t|%d|%d:%s|%d:%s|%d|%d|%d|%d|%d|%t|%g|%d:%s|%d:%s|%d:%s|%d:%s;",
 			ordinal.Valid,
 			ordinal.Int64,
@@ -191,7 +210,22 @@ func (db *DB) UsageEventFingerprint(sessionID string) (string, error) {
 			len(dedupKey.String), dedupKey.String,
 		)
 	}
-	return b.String(), rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for id, b := range builders {
+		out[id] = b.String()
+	}
+	return out, nil
+}
+
+// UsageEventFingerprint returns exact ordered fingerprint for one session.
+func (db *DB) UsageEventFingerprint(sessionID string) (string, error) {
+	fps, err := db.UsageEventFingerprints([]string{sessionID})
+	if err != nil {
+		return "", err
+	}
+	return fps[sessionID], nil
 }
 
 func (db *DB) GetUsageEvents(

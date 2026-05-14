@@ -249,6 +249,24 @@ func TestParseHermesArchiveIncludesTranscriptsMissingFromStateDB(
 	assert.Contains(t, ids, "hermes:extra")
 }
 
+func TestBuildHermesStateResultKeepsUsageOnlySessions(t *testing.T) {
+	res, ok := buildHermesStateResult(
+		hermesStateSession{
+			id:          "usage-only",
+			source:      "cli",
+			model:       "gpt-5.4",
+			startedAt:   time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC),
+			inputTokens: 10,
+		},
+		nil, t.TempDir(), "state.db", "", "local",
+	)
+	require.True(t, ok)
+	assert.Equal(t, "hermes:usage-only", res.Session.ID)
+	assert.Empty(t, res.Messages)
+	require.Len(t, res.UsageEvents, 1)
+	assert.Equal(t, 10, res.UsageEvents[0].InputTokens)
+}
+
 func TestCountHermesUsersSkipsToolResultOnlyMessages(t *testing.T) {
 	got := countHermesUsers([]ParsedMessage{
 		{Role: RoleUser, Content: "real prompt"},
