@@ -1269,20 +1269,22 @@ fn stop_backend_inner(app: &AppHandle, wait_timeout: Option<Duration>) -> bool {
     if let Some(timeout) = wait_timeout {
         begin_update_stop_wait(&state);
         let mut waited_generation = None;
-        let process = {
-            let Ok(mut guard) = state.child.lock() else {
+        let active_generation = {
+            let Ok(guard) = state.child.lock() else {
                 end_update_stop_wait(&state);
                 return false;
             };
-            guard.take()
+            guard.as_ref().map(|process| {
+                let generation = process.generation;
+                mark_sidecar_stopping(&state, generation);
+                if let Err(err) = request_sidecar_stop(process) {
+                    eprintln!("[agentsview] failed to stop sidecar: {err}");
+                }
+                generation
+            })
         };
-        let stopped = if let Some(process) = process {
-            let generation = process.generation;
+        let stopped = if let Some(generation) = active_generation {
             waited_generation = Some(generation);
-            mark_sidecar_stopping(&state, generation);
-            if let Err(err) = process.child.kill() {
-                eprintln!("[agentsview] failed to stop sidecar: {err}");
-            }
             finish_backend_stop_wait(
                 app,
                 &state,
@@ -1346,6 +1348,51 @@ fn finish_backend_stop_wait(
         eprintln!("[agentsview] timed out waiting for sidecar to stop before update install");
     }
     terminated
+}
+
+fn request_sidecar_stop(process: &SidecarProcess) -> io::Result<()> {
+    request_process_stop(process.child.pid())
+}
+
+#[cfg(windows)]
+fn request_process_stop(pid: u32) -> io::Result<()> {
+    let status = std::process::Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!(
+            "taskkill failed for pid {pid} with status {status}"
+        )))
+    }
+}
+
+#[cfg(unix)]
+fn request_process_stop(pid: u32) -> io::Result<()> {
+    let status = std::process::Command::new("kill")
+        .args(["-TERM", &pid.to_string()])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!(
+            "kill failed for pid {pid} with status {status}"
+        )))
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn request_process_stop(pid: u32) -> io::Result<()> {
+    Err(io::Error::other(format!(
+        "stopping pid {pid} is unsupported on this platform"
+    )))
 }
 
 fn restart_backend_after_update(handle: AppHandle) {
