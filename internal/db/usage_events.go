@@ -109,6 +109,10 @@ func replaceSessionUsageEventsTx(
 		if ev.CostUSD != nil {
 			cost = *ev.CostUSD
 		}
+		var occurredAt any
+		if ev.OccurredAt != "" {
+			occurredAt = ev.OccurredAt
+		}
 		if _, err := tx.Exec(`
 			INSERT INTO usage_events (
 				session_id, message_ordinal, source, model,
@@ -121,7 +125,7 @@ func replaceSessionUsageEventsTx(
 			ev.InputTokens, ev.OutputTokens,
 			ev.CacheCreationInputTokens, ev.CacheReadInputTokens,
 			ev.ReasoningTokens, cost, ev.CostStatus, ev.CostSource,
-			ev.OccurredAt, ev.DedupKey,
+			occurredAt, ev.DedupKey,
 		); err != nil {
 			return fmt.Errorf("inserting usage event: %w", err)
 		}

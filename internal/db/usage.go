@@ -212,7 +212,7 @@ type usageScanRow struct {
 	agent                    string
 	machine                  string
 	userMessageCount         int
-	isAutomated              bool
+	isAutomated              int
 	sessionActivityAt        string
 	displayName              string
 	startedAt                string

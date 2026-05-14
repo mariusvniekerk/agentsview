@@ -230,7 +230,6 @@ func TestUsageQueriesUnionMessageAndUsageEvents(t *testing.T) {
 			InputTokens:          300,
 			OutputTokens:         70,
 			CacheReadInputTokens: 20,
-			OccurredAt:           "2026-05-14T10:05:00Z",
 			DedupKey:             "session:hermes:event",
 		}},
 	), "replace hermes usage event")
