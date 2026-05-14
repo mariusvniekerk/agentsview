@@ -1032,6 +1032,22 @@ func (s *Sync) pushMessages(
 			"deleting pg messages: %w", err,
 		)
 	}
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM usage_events
+		WHERE session_id = $1
+	`, sessionID); err != nil {
+		return 0, fmt.Errorf(
+			"deleting pg usage_events: %w", err,
+		)
+	}
+
+	usageEvents, err := s.local.GetUsageEvents(ctx, sessionID)
+	if err != nil {
+		return 0, fmt.Errorf("reading local usage events: %w", err)
+	}
+	if err := bulkInsertUsageEvents(ctx, tx, usageEvents); err != nil {
+		return 0, err
+	}
 
 	count := 0
 	startOrdinal := 0
@@ -1200,6 +1216,75 @@ func bulkInsertMessages(
 		); err != nil {
 			return fmt.Errorf(
 				"bulk inserting messages: %w", err,
+			)
+		}
+	}
+	return nil
+}
+
+func bulkInsertUsageEvents(
+	ctx context.Context, tx *sql.Tx, events []db.UsageEvent,
+) error {
+	if len(events) == 0 {
+		return nil
+	}
+	const usageBatch = 100
+	for i := 0; i < len(events); i += usageBatch {
+		end := min(i+usageBatch, len(events))
+		batch := events[i:end]
+
+		var b strings.Builder
+		b.WriteString(`INSERT INTO usage_events (
+			session_id, message_ordinal, source, model,
+			input_tokens, output_tokens,
+			cache_creation_input_tokens, cache_read_input_tokens,
+			reasoning_tokens, cost_usd, cost_status, cost_source,
+			occurred_at, dedup_key) VALUES `)
+		args := make([]any, 0, len(batch)*14)
+		for j, ev := range batch {
+			if j > 0 {
+				b.WriteByte(',')
+			}
+			p := j*14 + 1
+			fmt.Fprintf(&b,
+				"($%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d)",
+				p, p+1, p+2, p+3, p+4, p+5, p+6,
+				p+7, p+8, p+9, p+10, p+11, p+12, p+13,
+			)
+			var occurred any
+			if ev.OccurredAt != "" {
+				if t, ok := ParseSQLiteTimestamp(ev.OccurredAt); ok {
+					occurred = t
+				}
+			}
+			var ordinal any
+			if ev.MessageOrdinal != nil {
+				ordinal = *ev.MessageOrdinal
+			}
+			var cost any
+			if ev.CostUSD != nil {
+				cost = *ev.CostUSD
+			}
+			args = append(args,
+				ev.SessionID,
+				ordinal,
+				sanitizePG(ev.Source),
+				sanitizePG(ev.Model),
+				ev.InputTokens,
+				ev.OutputTokens,
+				ev.CacheCreationInputTokens,
+				ev.CacheReadInputTokens,
+				ev.ReasoningTokens,
+				cost,
+				sanitizePG(ev.CostStatus),
+				sanitizePG(ev.CostSource),
+				occurred,
+				sanitizePG(ev.DedupKey),
+			)
+		}
+		if _, err := tx.ExecContext(ctx, b.String(), args...); err != nil {
+			return fmt.Errorf(
+				"bulk inserting usage_events: %w", err,
 			)
 		}
 	}

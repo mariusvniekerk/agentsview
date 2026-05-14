@@ -100,6 +100,36 @@ CREATE TABLE IF NOT EXISTS messages (
         REFERENCES sessions(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS usage_events (
+    id BIGSERIAL PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    message_ordinal INT,
+    source TEXT NOT NULL,
+    model TEXT NOT NULL,
+    input_tokens INT NOT NULL DEFAULT 0,
+    output_tokens INT NOT NULL DEFAULT 0,
+    cache_creation_input_tokens INT NOT NULL DEFAULT 0,
+    cache_read_input_tokens INT NOT NULL DEFAULT 0,
+    reasoning_tokens INT NOT NULL DEFAULT 0,
+    cost_usd DOUBLE PRECISION,
+    cost_status TEXT NOT NULL DEFAULT '',
+    cost_source TEXT NOT NULL DEFAULT '',
+    occurred_at TIMESTAMPTZ,
+    dedup_key TEXT NOT NULL DEFAULT '',
+    FOREIGN KEY (session_id)
+        REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_events_dedup
+    ON usage_events (session_id, source, dedup_key)
+    WHERE dedup_key != '';
+
+CREATE INDEX IF NOT EXISTS idx_usage_events_session
+    ON usage_events (session_id);
+
+CREATE INDEX IF NOT EXISTS idx_usage_events_occurred
+    ON usage_events (occurred_at);
+
 CREATE TABLE IF NOT EXISTS model_pricing (
     model_pattern TEXT PRIMARY KEY,
     input_per_mtok DOUBLE PRECISION NOT NULL DEFAULT 0,
