@@ -1054,11 +1054,12 @@ async fn check_for_updates(handle: &AppHandle, silent: bool) {
     } else {
         None
     };
+    let backend_stopped_for_update = windows_backend_stopped == Some(true);
 
     if let Err(err) = install_downloaded_update(
         update_bytes,
         windows_backend_stopped,
-        || restart_backend_after_update_failure(handle),
+        || restart_backend_after_update(handle.clone()),
         |bytes| update.install(bytes),
     ) {
         eprintln!("[agentsview] update install failed: {err}");
@@ -1081,10 +1082,18 @@ async fn check_for_updates(handle: &AppHandle, silent: bool) {
     )
     .await;
 
-    if restart {
-        let _ = handle.emit("restart", ());
-        handle.restart();
-    }
+    let emit_handle = handle.clone();
+    let restart_handle = handle.clone();
+    let backend_handle = handle.clone();
+    finish_successful_update(
+        backend_stopped_for_update,
+        restart,
+        || {
+            let _ = emit_handle.emit("restart", ());
+        },
+        || restart_handle.restart(),
+        || restart_backend_after_update(backend_handle),
+    );
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1125,6 +1134,25 @@ where
             }
             Err(InstallDownloadedUpdateError::Install(err))
         }
+    }
+}
+
+fn finish_successful_update<E, A, B>(
+    backend_stopped_for_update: bool,
+    restart_confirmed: bool,
+    emit_restart: E,
+    restart_app: A,
+    restart_backend: B,
+) where
+    E: FnOnce(),
+    A: FnOnce(),
+    B: FnOnce(),
+{
+    if restart_confirmed {
+        emit_restart();
+        restart_app();
+    } else if backend_stopped_for_update {
+        restart_backend();
     }
 }
 
@@ -1225,9 +1253,9 @@ fn finish_backend_stop_wait(
     terminated
 }
 
-fn restart_backend_after_update_failure(handle: &AppHandle) {
-    if let Err(err) = launch_backend_from_handle(handle) {
-        eprintln!("[agentsview] failed to restart backend after update failure: {err}");
+fn restart_backend_after_update(handle: AppHandle) {
+    if let Err(err) = launch_backend_from_handle(&handle) {
+        eprintln!("[agentsview] failed to restart backend after update: {err}");
     }
 }
 
@@ -1577,6 +1605,24 @@ mod tests {
         assert_eq!(
             events.lock().expect("lock events").as_slice(),
             ["install", "restart"]
+        );
+    }
+
+    #[test]
+    fn finish_successful_update_restarts_backend_when_windows_restart_is_declined() {
+        let events = Mutex::new(Vec::new());
+
+        finish_successful_update(
+            true,
+            false,
+            || events.lock().expect("lock events").push("emit-restart"),
+            || events.lock().expect("lock events").push("restart-app"),
+            || events.lock().expect("lock events").push("restart-backend"),
+        );
+
+        assert_eq!(
+            events.lock().expect("lock events").as_slice(),
+            ["restart-backend"]
         );
     }
 
