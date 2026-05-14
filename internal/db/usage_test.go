@@ -196,6 +196,89 @@ func TestGetDailyUsageWithData(t *testing.T) {
 	}
 }
 
+func TestUsageQueriesUnionMessageAndUsageEvents(t *testing.T) {
+	d := testDB(t)
+	ctx := context.Background()
+
+	insertSession(t, d, "claude:msg", "proj-a", func(s *Session) {
+		s.Agent = "claude"
+		s.StartedAt = new("2026-05-14T09:00:00Z")
+		s.UserMessageCount = 2
+	})
+	insertMessages(t, d, Message{
+		SessionID: "claude:msg",
+		Ordinal:   0,
+		Role:      "assistant",
+		Timestamp: "2026-05-14T09:05:00Z",
+		Model:     "claude-sonnet-4-20250514",
+		TokenUsage: json.RawMessage(
+			`{"input_tokens":100,"output_tokens":40}`,
+		),
+	})
+
+	insertSession(t, d, "hermes:event", "proj-b", func(s *Session) {
+		s.Agent = "hermes"
+		s.StartedAt = new("2026-05-14T10:00:00Z")
+		s.UserMessageCount = 2
+	})
+	requireNoError(t, d.ReplaceSessionUsageEvents(
+		"hermes:event",
+		[]UsageEvent{{
+			SessionID:            "hermes:event",
+			Source:               "session",
+			Model:                "gpt-5.4",
+			InputTokens:          300,
+			OutputTokens:         70,
+			CacheReadInputTokens: 20,
+			OccurredAt:           "2026-05-14T10:05:00Z",
+			DedupKey:             "session:hermes:event",
+		}},
+	), "replace hermes usage event")
+
+	filter := UsageFilter{
+		From:       "2026-05-14",
+		To:         "2026-05-14",
+		Breakdowns: true,
+	}
+	daily, err := d.GetDailyUsage(ctx, filter)
+	requireNoError(t, err, "GetDailyUsage")
+	if daily.Totals.InputTokens != 400 ||
+		daily.Totals.OutputTokens != 110 ||
+		daily.Totals.CacheReadTokens != 20 {
+		t.Fatalf("daily totals = %#v", daily.Totals)
+	}
+	if len(daily.Daily) != 1 {
+		t.Fatalf("daily entries = %d, want 1", len(daily.Daily))
+	}
+	if len(daily.Daily[0].AgentBreakdowns) != 2 {
+		t.Fatalf("agent breakdowns = %#v",
+			daily.Daily[0].AgentBreakdowns)
+	}
+
+	top, err := d.GetTopSessionsByCost(ctx, filter, 10)
+	requireNoError(t, err, "GetTopSessionsByCost")
+	topByID := make(map[string]TopSessionEntry, len(top))
+	for _, entry := range top {
+		topByID[entry.SessionID] = entry
+	}
+	if topByID["claude:msg"].TotalTokens != 140 {
+		t.Fatalf("claude top tokens = %#v", topByID["claude:msg"])
+	}
+	if topByID["hermes:event"].TotalTokens != 390 {
+		t.Fatalf("hermes top tokens = %#v", topByID["hermes:event"])
+	}
+
+	counts, err := d.GetUsageSessionCounts(ctx, filter)
+	requireNoError(t, err, "GetUsageSessionCounts")
+	if counts.Total != 2 ||
+		counts.ByAgent["claude"] != 1 ||
+		counts.ByAgent["hermes"] != 1 ||
+		counts.ByProject["proj-a"] != 1 ||
+		counts.ByProject["proj-b"] != 1 {
+		t.Fatalf("counts = %#v", counts)
+	}
+}
+
 // TestGetDailyUsage_CacheSavingsUsesPerModelRates pins down
 // that totals.CacheSavings is computed from each row's actual
 // per-model pricing, not a hard-coded proxy. A hard-coded
