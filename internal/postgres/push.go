@@ -149,6 +149,7 @@ func (s *Sync) Push(
 	var priorFingerprints map[string]string
 	var boundaryState map[string]string
 	var boundaryOK bool
+	sessionFingerprints := make(map[string]string, len(sessionByID))
 	if !full {
 		var bErr error
 		priorFingerprints, boundaryState, boundaryOK, bErr = readBoundaryAndFingerprints(
@@ -185,7 +186,11 @@ func (s *Sync) Push(
 				continue
 			}
 			if ok {
-				fp := sessionPushFingerprint(sess)
+				fp, err := s.sessionPushFingerprint(ctx, sess)
+				if err != nil {
+					return result, err
+				}
+				sessionFingerprints[sess.ID] = fp
 				if boundaryState[sess.ID] == fp {
 					continue
 				}
@@ -199,7 +204,14 @@ func (s *Sync) Push(
 
 	if len(priorFingerprints) > 0 {
 		for id, sess := range sessionByID {
-			fp := sessionPushFingerprint(sess)
+			fp, ok := sessionFingerprints[id]
+			if !ok {
+				fp, err = s.sessionPushFingerprint(ctx, sess)
+				if err != nil {
+					return result, err
+				}
+				sessionFingerprints[id] = fp
+			}
 			if priorFingerprints[id] == fp {
 				delete(sessionByID, id)
 			}
@@ -228,13 +240,14 @@ func (s *Sync) Push(
 			}
 			if err := writePushBoundaryState(
 				s.local, boundaryKey, sessions,
-				priorFingerprints,
+				priorFingerprints, sessionFingerprints,
 			); err != nil {
 				return result, err
 			}
 		} else {
 			if err := finalizePushState(
 				s.local, cutoff, sessions, nil,
+				sessionFingerprints,
 			); err != nil {
 				return result, err
 			}
@@ -302,7 +315,7 @@ func (s *Sync) Push(
 		}
 		if err := writePushBoundaryState(
 			s.local, boundaryKey, pushed,
-			priorFingerprints,
+			priorFingerprints, sessionFingerprints,
 		); err != nil {
 			return result, err
 		}
@@ -321,7 +334,7 @@ func (s *Sync) Push(
 		}
 		if err := finalizePushState(
 			s.local, finalizeCutoff, pushed,
-			mergedFingerprints,
+			mergedFingerprints, sessionFingerprints,
 		); err != nil {
 			return result, err
 		}
@@ -445,6 +458,7 @@ func finalizePushState(
 	cutoff string,
 	sessions []db.Session,
 	priorFingerprints map[string]string,
+	sessionFingerprints map[string]string,
 ) error {
 	if err := local.SetSyncState(
 		"last_push_at", cutoff,
@@ -453,6 +467,7 @@ func finalizePushState(
 	}
 	return writePushBoundaryState(
 		local, cutoff, sessions, priorFingerprints,
+		sessionFingerprints,
 	)
 }
 
@@ -521,6 +536,7 @@ func writePushBoundaryState(
 	cutoff string,
 	sessions []db.Session,
 	priorFingerprints map[string]string,
+	sessionFingerprints map[string]string,
 ) error {
 	state := pushBoundaryState{
 		Cutoff: cutoff,
@@ -531,7 +547,14 @@ func writePushBoundaryState(
 	}
 	maps.Copy(state.Fingerprints, priorFingerprints)
 	for _, sess := range sessions {
-		state.Fingerprints[sess.ID] = sessionPushFingerprint(sess)
+		fp, ok := sessionFingerprints[sess.ID]
+		if !ok {
+			return fmt.Errorf(
+				"missing session fingerprint for %s",
+				sess.ID,
+			)
+		}
+		state.Fingerprints[sess.ID] = fp
 	}
 	data, err := json.Marshal(state)
 	if err != nil {
@@ -600,7 +623,22 @@ func localSessionSyncMarker(sess db.Session) string {
 	return marker
 }
 
-func sessionPushFingerprint(sess db.Session) string {
+func (s *Sync) sessionPushFingerprint(
+	ctx context.Context, sess db.Session,
+) (string, error) {
+	usageFP, err := s.local.UsageEventFingerprint(sess.ID)
+	if err != nil {
+		return "", fmt.Errorf(
+			"computing local usage event fingerprint for %s: %w",
+			sess.ID, err,
+		)
+	}
+	return sessionPushFingerprint(sess, usageFP), nil
+}
+
+func sessionPushFingerprint(
+	sess db.Session, usageEventFingerprint string,
+) string {
 	fields := []string{
 		sess.ID,
 		sess.Project,
@@ -647,6 +685,7 @@ func sessionPushFingerprint(sess db.Session) string {
 		fmt.Sprintf("%d", sess.ParserMalformedLines),
 		fmt.Sprintf("%t", sess.IsTruncated),
 		stringValue(sess.TerminationStatus),
+		usageEventFingerprint,
 	}
 	var b strings.Builder
 	for _, f := range fields {
@@ -997,13 +1036,26 @@ func (s *Sync) pushMessages(
 				"computing pg token fingerprint: %w", err,
 			)
 		}
+		localUsageFP, err := s.local.UsageEventFingerprint(sessionID)
+		if err != nil {
+			return 0, fmt.Errorf(
+				"computing local usage event fingerprint: %w", err,
+			)
+		}
+		pgUsageFP, err := pgUsageEventFingerprint(ctx, tx, sessionID)
+		if err != nil {
+			return 0, fmt.Errorf(
+				"computing pg usage event fingerprint: %w", err,
+			)
+		}
 		if localSum == pgContentSum &&
 			localMax == pgContentMax &&
 			localMin == pgContentMin &&
 			localSysFP == pgSystemFP.String &&
 			localTCCount == pgToolCallCount &&
 			localTCSum == pgTCContentSum &&
-			localTokenFP == pgTokenFP {
+			localTokenFP == pgTokenFP &&
+			localUsageFP == pgUsageFP {
 			return 0, nil
 		}
 	}
@@ -1147,6 +1199,65 @@ func pgMessageTokenFingerprint(
 			len(srcUUID), srcUUID,
 			len(srcParentUUID), srcParentUUID,
 			isSidechain, isCompactBoundary,
+		)
+	}
+	return b.String(), rows.Err()
+}
+
+func pgUsageEventFingerprint(
+	ctx context.Context, tx *sql.Tx, sessionID string,
+) (string, error) {
+	rows, err := tx.QueryContext(ctx,
+		`SELECT message_ordinal, source, model,
+			input_tokens, output_tokens,
+			cache_creation_input_tokens, cache_read_input_tokens,
+			reasoning_tokens, cost_usd, cost_status, cost_source,
+			occurred_at, dedup_key
+		 FROM usage_events
+		 WHERE session_id = $1
+		 ORDER BY COALESCE(occurred_at, ''), id`,
+		sessionID,
+	)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	var b strings.Builder
+	for rows.Next() {
+		var ordinal sql.NullInt64
+		var source, model, costStatus, costSource string
+		var inputTokens, outputTokens int
+		var cacheCreationInputTokens, cacheReadInputTokens int
+		var reasoningTokens int
+		var cost sql.NullFloat64
+		var occurredAt, dedupKey sql.NullString
+		if err := rows.Scan(
+			&ordinal, &source, &model,
+			&inputTokens, &outputTokens,
+			&cacheCreationInputTokens, &cacheReadInputTokens,
+			&reasoningTokens, &cost, &costStatus, &costSource,
+			&occurredAt, &dedupKey,
+		); err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&b,
+			"%t|%d|%d:%s|%d:%s|%d|%d|%d|%d|%d|%t|%g|%d:%s|%d:%s|%d:%s|%d:%s;",
+			ordinal.Valid,
+			ordinal.Int64,
+			len(source), source,
+			len(model), model,
+			inputTokens,
+			outputTokens,
+			cacheCreationInputTokens,
+			cacheReadInputTokens,
+			reasoningTokens,
+			cost.Valid,
+			cost.Float64,
+			len(costStatus), costStatus,
+			len(costSource), costSource,
+			len(occurredAt.String), occurredAt.String,
+			len(dedupKey.String), dedupKey.String,
 		)
 	}
 	return b.String(), rows.Err()

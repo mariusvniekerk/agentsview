@@ -141,7 +141,7 @@ func TestSessionPushFingerprintDiffers(t *testing.T) {
 		CreatedAt:        "2026-03-11T12:00:00Z",
 	}
 
-	fp1 := sessionPushFingerprint(base)
+	fp1 := sessionPushFingerprint(base, "")
 
 	tests := []struct {
 		name   string
@@ -191,7 +191,7 @@ func TestSessionPushFingerprintDiffers(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			modified := tc.modify(base)
-			fp2 := sessionPushFingerprint(modified)
+			fp2 := sessionPushFingerprint(modified, "")
 			if fp1 == fp2 {
 				t.Fatalf(
 					"fingerprint should differ after %s",
@@ -201,11 +201,31 @@ func TestSessionPushFingerprintDiffers(t *testing.T) {
 		})
 	}
 
-	if fp1 != sessionPushFingerprint(base) {
+	if fp1 != sessionPushFingerprint(base, "") {
 		t.Fatal(
 			"identical sessions should produce " +
 				"identical fingerprints",
 		)
+	}
+}
+
+func TestSessionPushFingerprintIncludesUsageEventFingerprint(
+	t *testing.T,
+) {
+	base := db.Session{
+		ID:               "sess-001",
+		Project:          "proj",
+		Machine:          "laptop",
+		Agent:            "claude",
+		MessageCount:     5,
+		UserMessageCount: 2,
+		CreatedAt:        "2026-03-11T12:00:00Z",
+	}
+
+	withoutUsage := sessionPushFingerprint(base, "")
+	withUsage := sessionPushFingerprint(base, "usage-fp")
+	if withoutUsage == withUsage {
+		t.Fatal("usage event fingerprint should affect session fingerprint")
 	}
 }
 
@@ -222,7 +242,7 @@ func TestSessionPushFingerprintNoFieldCollisions(
 		Project:   "bcd",
 		CreatedAt: "2026-03-11T12:00:00Z",
 	}
-	if sessionPushFingerprint(s1) == sessionPushFingerprint(s2) {
+	if sessionPushFingerprint(s1, "") == sessionPushFingerprint(s2, "") {
 		t.Fatal(
 			"length-prefixed fingerprints should not collide",
 		)
@@ -236,7 +256,7 @@ func TestFinalizePushStatePersistsEmptyBoundary(
 
 	store := &syncStateStoreStub{}
 	if err := finalizePushState(
-		store, cutoff, nil, nil,
+		store, cutoff, nil, nil, map[string]string{},
 	); err != nil {
 		t.Fatalf("finalizePushState: %v", err)
 	}
@@ -294,6 +314,7 @@ func TestFinalizePushStateMergesPriorFingerprints(
 	if err := finalizePushState(
 		store, cutoff, cycle2Sessions,
 		priorFingerprints,
+		map[string]string{"sess-002": sessionPushFingerprint(cycle2Sessions[0], "")},
 	); err != nil {
 		t.Fatalf("finalizePushState: %v", err)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 // UsageEvent records token and cost accounting that does not belong
@@ -129,6 +130,66 @@ func replaceSessionUsageEventsTx(
 }
 
 // GetUsageEvents returns usage events for one session in stable order.
+// UsageEventFingerprint returns exact ordered fingerprint of
+// stored usage events for one session. Used by PG push fast-paths
+// to detect usage-only changes without rewriting unchanged rows.
+func (db *DB) UsageEventFingerprint(sessionID string) (string, error) {
+	rows, err := db.getReader().Query(`
+		SELECT message_ordinal, source, model,
+			input_tokens, output_tokens,
+			cache_creation_input_tokens, cache_read_input_tokens,
+			reasoning_tokens, cost_usd, cost_status, cost_source,
+			occurred_at, dedup_key
+		FROM usage_events
+		WHERE session_id = ?
+		ORDER BY COALESCE(occurred_at, ''), id`,
+		sessionID,
+	)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	var b strings.Builder
+	for rows.Next() {
+		var ordinal sql.NullInt64
+		var source, model, costStatus, costSource string
+		var inputTokens, outputTokens int
+		var cacheCreationInputTokens, cacheReadInputTokens int
+		var reasoningTokens int
+		var cost sql.NullFloat64
+		var occurredAt, dedupKey sql.NullString
+		if err := rows.Scan(
+			&ordinal, &source, &model,
+			&inputTokens, &outputTokens,
+			&cacheCreationInputTokens, &cacheReadInputTokens,
+			&reasoningTokens, &cost, &costStatus, &costSource,
+			&occurredAt, &dedupKey,
+		); err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&b,
+			"%t|%d|%d:%s|%d:%s|%d|%d|%d|%d|%d|%t|%g|%d:%s|%d:%s|%d:%s|%d:%s;",
+			ordinal.Valid,
+			ordinal.Int64,
+			len(source), source,
+			len(model), model,
+			inputTokens,
+			outputTokens,
+			cacheCreationInputTokens,
+			cacheReadInputTokens,
+			reasoningTokens,
+			cost.Valid,
+			cost.Float64,
+			len(costStatus), costStatus,
+			len(costSource), costSource,
+			len(occurredAt.String), occurredAt.String,
+			len(dedupKey.String), dedupKey.String,
+		)
+	}
+	return b.String(), rows.Err()
+}
+
 func (db *DB) GetUsageEvents(
 	ctx context.Context, sessionID string,
 ) ([]UsageEvent, error) {

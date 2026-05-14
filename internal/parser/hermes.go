@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"path/filepath"
@@ -60,23 +61,42 @@ type hermesStateMessage struct {
 func ParseHermesArchive(root, project, machine string) ([]ParseResult, error) {
 	stateDB, sessionsDir, ok := hermesStatePaths(root)
 	if !ok {
-		var results []ParseResult
-		for _, file := range DiscoverHermesSessions(root) {
-			sess, msgs, err := ParseHermesSession(
-				file.Path, file.Project, machine,
-			)
-			if err != nil {
-				return nil, err
-			}
-			if sess != nil {
-				results = append(results, ParseResult{
-					Session: *sess, Messages: msgs,
-				})
-			}
-		}
+		return parseHermesTranscriptArchive(root, project, machine)
+	}
+
+	results, err := parseHermesStateDB(
+		stateDB, sessionsDir, project, machine,
+	)
+	if err == nil {
 		return results, nil
 	}
-	return parseHermesStateDB(stateDB, sessionsDir, project, machine)
+	log.Printf(
+		"hermes: state db parse failed for %s: %v; falling back to transcripts",
+		stateDB, err,
+	)
+	return parseHermesTranscriptArchive(
+		sessionsDir, project, machine,
+	)
+}
+
+func parseHermesTranscriptArchive(
+	root, project, machine string,
+) ([]ParseResult, error) {
+	var results []ParseResult
+	for _, file := range discoverHermesTranscriptFiles(root) {
+		sess, msgs, err := ParseHermesSession(
+			file.Path, file.Project, machine,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if sess != nil {
+			results = append(results, ParseResult{
+				Session: *sess, Messages: msgs,
+			})
+		}
+	}
+	return results, nil
 }
 
 // ParseHermesSession parses a Hermes Agent JSONL session file.
@@ -954,9 +974,9 @@ func HermesSessionID(name string) string {
 	return name
 }
 
-// DiscoverHermesSessions finds all JSONL session files under the
-// Hermes sessions directory. The directory structure is flat:
-// <sessionsDir>/<timestamp>_<hash>.jsonl
+// DiscoverHermesSessions finds Hermes session sources. When a sibling
+// state.db exists, it prefers that archive root; otherwise it returns
+// transcript files from the sessions directory.
 func DiscoverHermesSessions(sessionsDir string) []DiscoveredFile {
 	if sessionsDir == "" {
 		return nil
@@ -967,7 +987,10 @@ func DiscoverHermesSessions(sessionsDir string) []DiscoveredFile {
 			Agent: AgentHermes,
 		}}
 	}
+	return discoverHermesTranscriptFiles(sessionsDir)
+}
 
+func discoverHermesTranscriptFiles(sessionsDir string) []DiscoveredFile {
 	entries, err := os.ReadDir(sessionsDir)
 	if err != nil {
 		return nil

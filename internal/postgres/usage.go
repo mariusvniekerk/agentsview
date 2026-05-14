@@ -34,16 +34,13 @@ func paddedUTCBound(ts string, hours int) string {
 	if err != nil {
 		return ts
 	}
-	return t.Add(time.Duration(hours) * time.Hour).
-		Format(time.RFC3339)
+	return t.Add(time.Duration(hours) * time.Hour).Format(time.RFC3339)
 }
 
-func appendPGUsageFilterClauses(
+func appendPGUsageRowFilterClauses(
 	query string, pb *paramBuilder, f db.UsageFilter,
 ) (string, []any) {
-	appendCSV := func(
-		q, col, csv string, include bool,
-	) string {
+	appendCSV := func(q, col, csv string, include bool) string {
 		if csv == "" {
 			return q
 		}
@@ -66,30 +63,218 @@ func appendPGUsageFilterClauses(
 			strings.Join(placeholders, ",") + ")"
 	}
 
-	query = appendCSV(query, "s.agent", f.Agent, true)
-	query = appendCSV(query, "s.project", f.Project, true)
-	query = appendCSV(query, "s.machine", f.Machine, true)
-	query = appendCSV(query, "m.model", f.Model, true)
-	query = appendCSV(query, "s.project", f.ExcludeProject, false)
-	query = appendCSV(query, "s.agent", f.ExcludeAgent, false)
-	query = appendCSV(query, "m.model", f.ExcludeModel, false)
+	query = appendCSV(query, "u.agent", f.Agent, true)
+	query = appendCSV(query, "u.project", f.Project, true)
+	query = appendCSV(query, "u.machine", f.Machine, true)
+	query = appendCSV(query, "u.model", f.Model, true)
+	query = appendCSV(query, "u.project", f.ExcludeProject, false)
+	query = appendCSV(query, "u.agent", f.ExcludeAgent, false)
+	query = appendCSV(query, "u.model", f.ExcludeModel, false)
 
 	if f.MinUserMessages > 0 {
-		query += " AND s.user_message_count >= " +
-			pb.add(f.MinUserMessages)
+		query += " AND u.user_message_count >= " + pb.add(f.MinUserMessages)
 	}
 	if f.ExcludeOneShot {
-		query += " AND s.user_message_count > 1"
+		query += " AND u.user_message_count > 1"
 	}
 	if f.ExcludeAutomated {
-		query += " AND COALESCE(s.is_automated, false) = false"
+		query += " AND COALESCE(u.is_automated, false) = false"
 	}
 	if f.ActiveSince != "" {
-		query += " AND COALESCE(s.ended_at, s.started_at, s.created_at) >= " +
+		query += " AND u.session_activity_at >= " +
 			pb.add(f.ActiveSince) + "::timestamptz"
 	}
 
 	return query, pb.args
+}
+
+const pgUsageRowsSQL = `
+SELECT
+	m.session_id,
+	m.ordinal AS message_ordinal,
+	'message' AS usage_source,
+	COALESCE(m.timestamp, s.started_at) AS ts,
+	m.model,
+	m.token_usage,
+	0 AS input_tokens,
+	0 AS output_tokens,
+	0 AS cache_creation_input_tokens,
+	0 AS cache_read_input_tokens,
+	0 AS reasoning_tokens,
+	NULL::double precision AS cost_usd,
+	'' AS cost_status,
+	'' AS cost_source,
+	m.claude_message_id,
+	m.claude_request_id,
+	'' AS usage_dedup_key,
+	s.project,
+	s.agent,
+	s.machine,
+	s.user_message_count,
+	s.is_automated,
+	COALESCE(s.ended_at, s.started_at, s.created_at) AS session_activity_at,
+	COALESCE(NULLIF(s.display_name, ''), NULLIF(s.first_message, ''), NULLIF(s.project, ''), s.id) AS display_name,
+	s.started_at
+FROM messages m
+JOIN sessions s ON m.session_id = s.id
+WHERE ` + pgUsageMessageEligibility + `
+
+UNION ALL
+
+SELECT
+	ue.session_id,
+	ue.message_ordinal,
+	ue.source AS usage_source,
+	COALESCE(ue.occurred_at, s.started_at) AS ts,
+	ue.model,
+	'' AS token_usage,
+	ue.input_tokens,
+	ue.output_tokens,
+	ue.cache_creation_input_tokens,
+	ue.cache_read_input_tokens,
+	ue.reasoning_tokens,
+	ue.cost_usd,
+	ue.cost_status,
+	ue.cost_source,
+	'' AS claude_message_id,
+	'' AS claude_request_id,
+	COALESCE(NULLIF(ue.dedup_key, ''), ue.source || ':' || ue.session_id) AS usage_dedup_key,
+	s.project,
+	s.agent,
+	s.machine,
+	s.user_message_count,
+	s.is_automated,
+	COALESCE(s.ended_at, s.started_at, s.created_at) AS session_activity_at,
+	COALESCE(NULLIF(s.display_name, ''), NULLIF(s.first_message, ''), NULLIF(s.project, ''), s.id) AS display_name,
+	s.started_at
+FROM usage_events ue
+JOIN sessions s ON s.id = ue.session_id
+WHERE ue.model != ''
+  AND s.deleted_at IS NULL`
+
+type pgUsageScanRow struct {
+	sessionID                string
+	messageOrdinal           sql.NullInt64
+	usageSource              string
+	ts                       sql.NullTime
+	model                    string
+	tokenJSON                string
+	inputTokens              int
+	outputTokens             int
+	cacheCreationInputTokens int
+	cacheReadInputTokens     int
+	reasoningTokens          int
+	costUSD                  sql.NullFloat64
+	costStatus               string
+	costSource               string
+	claudeMessageID          string
+	claudeRequestID          string
+	usageDedupKey            string
+	project                  string
+	agent                    string
+	machine                  string
+	userMessageCount         int
+	isAutomated              bool
+	sessionActivityAt        sql.NullTime
+	displayName              string
+	startedAt                sql.NullTime
+}
+
+func pgUsageRowSelect() string {
+	return `
+SELECT
+	u.session_id,
+	u.message_ordinal,
+	u.usage_source,
+	u.ts,
+	u.model,
+	u.token_usage,
+	u.input_tokens,
+	u.output_tokens,
+	u.cache_creation_input_tokens,
+	u.cache_read_input_tokens,
+	u.reasoning_tokens,
+	u.cost_usd,
+	u.cost_status,
+	u.cost_source,
+	u.claude_message_id,
+	u.claude_request_id,
+	u.usage_dedup_key,
+	u.project,
+	u.agent,
+	u.machine,
+	u.user_message_count,
+	u.is_automated,
+	u.session_activity_at,
+	u.display_name,
+	u.started_at
+FROM (` + pgUsageRowsSQL + `) u
+WHERE 1=1`
+}
+
+func scanPGUsageRow(rows *sql.Rows) (pgUsageScanRow, error) {
+	var r pgUsageScanRow
+	err := rows.Scan(
+		&r.sessionID,
+		&r.messageOrdinal,
+		&r.usageSource,
+		&r.ts,
+		&r.model,
+		&r.tokenJSON,
+		&r.inputTokens,
+		&r.outputTokens,
+		&r.cacheCreationInputTokens,
+		&r.cacheReadInputTokens,
+		&r.reasoningTokens,
+		&r.costUSD,
+		&r.costStatus,
+		&r.costSource,
+		&r.claudeMessageID,
+		&r.claudeRequestID,
+		&r.usageDedupKey,
+		&r.project,
+		&r.agent,
+		&r.machine,
+		&r.userMessageCount,
+		&r.isAutomated,
+		&r.sessionActivityAt,
+		&r.displayName,
+		&r.startedAt,
+	)
+	return r, err
+}
+
+func pgUsageAmounts(
+	r pgUsageScanRow, pricing map[string]modelRates,
+) (inputTok, outputTok, cacheCrTok, cacheRdTok int, cost, savings float64) {
+	if r.usageSource == "message" {
+		usage := gjson.Parse(r.tokenJSON)
+		inputTok = int(usage.Get("input_tokens").Int())
+		outputTok = int(usage.Get("output_tokens").Int())
+		cacheCrTok = int(usage.Get("cache_creation_input_tokens").Int())
+		cacheRdTok = int(usage.Get("cache_read_input_tokens").Int())
+	} else {
+		inputTok = r.inputTokens
+		outputTok = r.outputTokens
+		cacheCrTok = r.cacheCreationInputTokens
+		cacheRdTok = r.cacheReadInputTokens
+	}
+
+	rates := pricing[r.model]
+	if r.costUSD.Valid {
+		cost = r.costUSD.Float64
+	} else {
+		cost = (float64(inputTok)*rates.input +
+			float64(outputTok)*rates.output +
+			float64(cacheCrTok)*rates.cacheCreation +
+			float64(cacheRdTok)*rates.cacheRead) / 1_000_000
+	}
+	readDelta := float64(cacheRdTok) *
+		(rates.input - rates.cacheRead) / 1_000_000
+	createDelta := float64(cacheCrTok) *
+		(rates.input - rates.cacheCreation) / 1_000_000
+	savings = readDelta + createDelta
+	return
 }
 
 func usageDate(ts sql.NullTime, loc *time.Location) string {
@@ -97,6 +282,13 @@ func usageDate(ts sql.NullTime, loc *time.Location) string {
 		return ""
 	}
 	return ts.Time.In(loc).Format("2006-01-02")
+}
+
+func startedAtString(ts sql.NullTime) string {
+	if !ts.Valid {
+		return ""
+	}
+	return FormatISO8601(ts.Time)
 }
 
 // GetDailyUsage returns token usage and cost aggregated by day.
@@ -111,47 +303,19 @@ func (s *Store) GetDailyUsage(
 			fmt.Errorf("loading pg pricing: %w", err)
 	}
 
-	var query string
-	if f.Breakdowns {
-		query = `
-SELECT
-	COALESCE(m.timestamp, s.started_at) as ts,
-	m.model,
-	m.token_usage,
-	m.claude_message_id,
-	m.claude_request_id,
-	s.project,
-	s.agent
-FROM messages m
-JOIN sessions s ON m.session_id = s.id
-WHERE ` + pgUsageMessageEligibility
-	} else {
-		query = `
-SELECT
-	COALESCE(m.timestamp, s.started_at) as ts,
-	m.model,
-	m.token_usage,
-	m.claude_message_id,
-	m.claude_request_id
-FROM messages m
-JOIN sessions s ON m.session_id = s.id
-WHERE ` + pgUsageMessageEligibility
-	}
-
+	query := pgUsageRowSelect()
 	pb := &paramBuilder{}
 	if f.From != "" {
 		padded := paddedUTCBound(f.From+"T00:00:00Z", -14)
-		query += " AND COALESCE(m.timestamp, s.started_at) >= " +
-			pb.add(padded) + "::timestamptz"
+		query += " AND u.ts >= " + pb.add(padded) + "::timestamptz"
 	}
 	if f.To != "" {
 		padded := paddedUTCBound(f.To+"T23:59:59Z", 14)
-		query += " AND COALESCE(m.timestamp, s.started_at) <= " +
-			pb.add(padded) + "::timestamptz"
+		query += " AND u.ts <= " + pb.add(padded) + "::timestamptz"
 	}
-	query, _ = appendPGUsageFilterClauses(query, pb, f)
-	query += ` ORDER BY COALESCE(m.timestamp, s.started_at) ASC,
-		m.session_id ASC, m.ordinal ASC`
+	query, _ = appendPGUsageRowFilterClauses(query, pb, f)
+	query += ` ORDER BY u.ts ASC, u.session_id ASC,
+		COALESCE(u.message_ordinal, -1) ASC`
 
 	rows, err := s.pg.QueryContext(ctx, query, pb.args...)
 	if err != nil {
@@ -182,34 +346,14 @@ WHERE ` + pgUsageMessageEligibility
 	seen := make(map[dedupKey]struct{})
 	var totalSavings float64
 
-	var (
-		ts        sql.NullTime
-		model     string
-		tokenJSON string
-		msgID     string
-		reqID     string
-		project   string
-		agent     string
-	)
 	for rows.Next() {
-		var scanErr error
-		if f.Breakdowns {
-			scanErr = rows.Scan(
-				&ts, &model, &tokenJSON,
-				&msgID, &reqID, &project, &agent,
-			)
-		} else {
-			scanErr = rows.Scan(
-				&ts, &model, &tokenJSON,
-				&msgID, &reqID,
-			)
-		}
+		r, scanErr := scanPGUsageRow(rows)
 		if scanErr != nil {
 			return db.DailyUsageResult{},
 				fmt.Errorf("scanning daily usage row: %w", scanErr)
 		}
 
-		date := usageDate(ts, loc)
+		date := usageDate(r.ts, loc)
 		if f.From != "" && date < f.From {
 			continue
 		}
@@ -217,41 +361,27 @@ WHERE ` + pgUsageMessageEligibility
 			continue
 		}
 
-		if msgID != "" && reqID != "" {
-			key := dedupKey{msgID: msgID, reqID: reqID}
+		if r.claudeMessageID != "" && r.claudeRequestID != "" {
+			key := dedupKey{msgID: r.claudeMessageID, reqID: r.claudeRequestID}
+			if _, dup := seen[key]; dup {
+				continue
+			}
+			seen[key] = struct{}{}
+		} else if r.usageDedupKey != "" {
+			key := dedupKey{msgID: "usage", reqID: r.usageDedupKey}
 			if _, dup := seen[key]; dup {
 				continue
 			}
 			seen[key] = struct{}{}
 		}
 
-		usage := gjson.Parse(tokenJSON)
-		inputTok := int(usage.Get("input_tokens").Int())
-		outputTok := int(usage.Get("output_tokens").Int())
-		cacheCrTok := int(
-			usage.Get("cache_creation_input_tokens").Int(),
-		)
-		cacheRdTok := int(
-			usage.Get("cache_read_input_tokens").Int(),
-		)
-
-		rates := pricing[model]
-		cost := (float64(inputTok)*rates.input +
-			float64(outputTok)*rates.output +
-			float64(cacheCrTok)*rates.cacheCreation +
-			float64(cacheRdTok)*rates.cacheRead) / 1_000_000
-
-		readDelta := float64(cacheRdTok) *
-			(rates.input - rates.cacheRead) / 1_000_000
-		createDelta := float64(cacheCrTok) *
-			(rates.input - rates.cacheCreation) / 1_000_000
-		totalSavings += readDelta + createDelta
+		inputTok, outputTok, cacheCrTok, cacheRdTok, cost, savings :=
+			pgUsageAmounts(r, pricing)
+		totalSavings += savings
 
 		key := accumKey{
-			date:    date,
-			project: project,
-			agent:   agent,
-			model:   model,
+			date: date, project: r.project,
+			agent: r.agent, model: r.model,
 		}
 		b, ok := accum[key]
 		if !ok {
@@ -296,9 +426,7 @@ WHERE ` + pgUsageMessageEligibility
 			ma.cost += b.cost
 		}
 
-		type dayData struct {
-			models map[string]*modelAccum
-		}
+		type dayData struct{ models map[string]*modelAccum }
 		days := make(map[string]*dayData)
 		for key, ma := range dm {
 			dd, ok := days[key.date]
@@ -318,8 +446,8 @@ WHERE ` + pgUsageMessageEligibility
 		daily := make([]db.DailyUsageEntry, 0, len(dateKeys))
 		var totals db.UsageTotals
 		for _, date := range dateKeys {
-			dd, ok := days[date]
-			if !ok || dd == nil {
+			dd := days[date]
+			if dd == nil {
 				continue
 			}
 			var entry db.DailyUsageEntry
@@ -335,18 +463,16 @@ WHERE ` + pgUsageMessageEligibility
 				if left == nil || right == nil {
 					return left != nil
 				}
-				ci := left.cost
-				cj := right.cost
-				if ci != cj {
-					return ci > cj
+				if left.cost != right.cost {
+					return left.cost > right.cost
 				}
 				return modelNames[i] < modelNames[j]
 			})
 			entry.ModelsUsed = modelNames
 			mbd := make([]db.ModelBreakdown, 0, len(modelNames))
 			for _, m := range modelNames {
-				ma, ok := dd.models[m]
-				if !ok || ma == nil {
+				ma := dd.models[m]
+				if ma == nil {
 					continue
 				}
 				entry.InputTokens += ma.inputTok
@@ -376,10 +502,7 @@ WHERE ` + pgUsageMessageEligibility
 			daily = []db.DailyUsageEntry{}
 		}
 		totals.CacheSavings = totalSavings
-		return db.DailyUsageResult{
-			Daily:  daily,
-			Totals: totals,
-		}, nil
+		return db.DailyUsageResult{Daily: daily, Totals: totals}, nil
 	}
 
 	type dayMaps struct {
@@ -398,7 +521,6 @@ WHERE ` + pgUsageMessageEligibility
 			}
 			days[key.date] = dm
 		}
-
 		cur := dm.models[key.model]
 		cur.inputTok += b.inputTok
 		cur.outputTok += b.outputTok
@@ -433,8 +555,8 @@ WHERE ` + pgUsageMessageEligibility
 	daily := make([]db.DailyUsageEntry, 0, len(dateKeys))
 	var totals db.UsageTotals
 	for _, date := range dateKeys {
-		dm, ok := days[date]
-		if !ok || dm == nil {
+		dm := days[date]
+		if dm == nil {
 			continue
 		}
 		var entry db.DailyUsageEntry
@@ -447,20 +569,15 @@ WHERE ` + pgUsageMessageEligibility
 		sort.Slice(modelNames, func(i, j int) bool {
 			left := dm.models[modelNames[i]]
 			right := dm.models[modelNames[j]]
-			ci := left.cost
-			cj := right.cost
-			if ci != cj {
-				return ci > cj
+			if left.cost != right.cost {
+				return left.cost > right.cost
 			}
 			return modelNames[i] < modelNames[j]
 		})
 		entry.ModelsUsed = modelNames
 		mbd := make([]db.ModelBreakdown, 0, len(modelNames))
 		for _, m := range modelNames {
-			b, ok := dm.models[m]
-			if !ok {
-				continue
-			}
+			b := dm.models[m]
 			entry.InputTokens += b.inputTok
 			entry.OutputTokens += b.outputTok
 			entry.CacheCreationTokens += b.cacheCr
@@ -516,7 +633,6 @@ WHERE ` + pgUsageMessageEligibility
 		entry.AgentBreakdowns = abd
 
 		daily = append(daily, entry)
-
 		totals.InputTokens += entry.InputTokens
 		totals.OutputTokens += entry.OutputTokens
 		totals.CacheCreationTokens += entry.CacheCreationTokens
@@ -527,12 +643,8 @@ WHERE ` + pgUsageMessageEligibility
 	if daily == nil {
 		daily = []db.DailyUsageEntry{}
 	}
-
 	totals.CacheSavings = totalSavings
-	return db.DailyUsageResult{
-		Daily:  daily,
-		Totals: totals,
-	}, nil
+	return db.DailyUsageResult{Daily: daily, Totals: totals}, nil
 }
 
 // GetTopSessionsByCost returns sessions ranked by total cost.
@@ -551,36 +663,19 @@ func (s *Store) GetTopSessionsByCost(
 		return nil, fmt.Errorf("loading pg pricing: %w", err)
 	}
 
-	query := `
-SELECT
-	s.id,
-	COALESCE(s.display_name, s.id),
-	s.agent,
-	s.project,
-	s.started_at,
-	m.model,
-	m.token_usage,
-	m.claude_message_id,
-	m.claude_request_id,
-	COALESCE(m.timestamp, s.started_at) as ts
-FROM messages m
-JOIN sessions s ON m.session_id = s.id
-WHERE ` + pgUsageMessageEligibility
-
+	query := pgUsageRowSelect()
 	pb := &paramBuilder{}
 	if f.From != "" {
 		padded := paddedUTCBound(f.From+"T00:00:00Z", -14)
-		query += " AND COALESCE(m.timestamp, s.started_at) >= " +
-			pb.add(padded) + "::timestamptz"
+		query += " AND u.ts >= " + pb.add(padded) + "::timestamptz"
 	}
 	if f.To != "" {
 		padded := paddedUTCBound(f.To+"T23:59:59Z", 14)
-		query += " AND COALESCE(m.timestamp, s.started_at) <= " +
-			pb.add(padded) + "::timestamptz"
+		query += " AND u.ts <= " + pb.add(padded) + "::timestamptz"
 	}
-	query, _ = appendPGUsageFilterClauses(query, pb, f)
-	query += ` ORDER BY COALESCE(m.timestamp, s.started_at) ASC,
-		m.session_id ASC, m.ordinal ASC`
+	query, _ = appendPGUsageRowFilterClauses(query, pb, f)
+	query += ` ORDER BY u.ts ASC, u.session_id ASC,
+		COALESCE(u.message_ordinal, -1) ASC`
 
 	rows, err := s.pg.QueryContext(ctx, query, pb.args...)
 	if err != nil {
@@ -589,7 +684,6 @@ WHERE ` + pgUsageMessageEligibility
 	defer rows.Close()
 
 	loc := usageLocation(f)
-
 	type sessAccum struct {
 		displayName string
 		agent       string
@@ -607,28 +701,14 @@ WHERE ` + pgUsageMessageEligibility
 	var order []string
 	seen := make(map[dedupKey]struct{})
 
-	var (
-		sid         string
-		displayName string
-		agent       string
-		project     string
-		startedAt   sql.NullTime
-		model       string
-		tokenJSON   string
-		msgID       string
-		reqID       string
-		ts          sql.NullTime
-	)
 	for rows.Next() {
-		if err := rows.Scan(
-			&sid, &displayName, &agent, &project,
-			&startedAt, &model, &tokenJSON,
-			&msgID, &reqID, &ts,
-		); err != nil {
-			return nil, fmt.Errorf("scanning top sessions row: %w", err)
+		r, err := scanPGUsageRow(rows)
+		if err != nil {
+			return nil,
+				fmt.Errorf("scanning top sessions row: %w", err)
 		}
 
-		date := usageDate(ts, loc)
+		date := usageDate(r.ts, loc)
 		if f.From != "" && date < f.From {
 			continue
 		}
@@ -636,56 +716,46 @@ WHERE ` + pgUsageMessageEligibility
 			continue
 		}
 
-		if msgID != "" && reqID != "" {
-			key := dedupKey{msgID: msgID, reqID: reqID}
+		if r.claudeMessageID != "" && r.claudeRequestID != "" {
+			key := dedupKey{msgID: r.claudeMessageID, reqID: r.claudeRequestID}
+			if _, dup := seen[key]; dup {
+				continue
+			}
+			seen[key] = struct{}{}
+		} else if r.usageDedupKey != "" {
+			key := dedupKey{msgID: "usage", reqID: r.usageDedupKey}
 			if _, dup := seen[key]; dup {
 				continue
 			}
 			seen[key] = struct{}{}
 		}
 
-		usage := gjson.Parse(tokenJSON)
-		inputTok := int(usage.Get("input_tokens").Int())
-		outputTok := int(usage.Get("output_tokens").Int())
-		cacheCrTok := int(
-			usage.Get("cache_creation_input_tokens").Int(),
-		)
-		cacheRdTok := int(
-			usage.Get("cache_read_input_tokens").Int(),
-		)
+		inputTok, outputTok, cacheCrTok, cacheRdTok, cost, _ :=
+			pgUsageAmounts(r, pricing)
 
-		rates := pricing[model]
-		cost := (float64(inputTok)*rates.input +
-			float64(outputTok)*rates.output +
-			float64(cacheCrTok)*rates.cacheCreation +
-			float64(cacheRdTok)*rates.cacheRead) / 1_000_000
-
-		sa, ok := accum[sid]
+		sa, ok := accum[r.sessionID]
 		if !ok {
-			started := ""
-			if startedAt.Valid {
-				started = FormatISO8601(startedAt.Time)
-			}
 			sa = &sessAccum{
-				displayName: displayName,
-				agent:       agent,
-				project:     project,
-				startedAt:   started,
+				displayName: r.displayName,
+				agent:       r.agent,
+				project:     r.project,
+				startedAt:   startedAtString(r.startedAt),
 			}
-			accum[sid] = sa
-			order = append(order, sid)
+			accum[r.sessionID] = sa
+			order = append(order, r.sessionID)
 		}
 		sa.totalTokens += inputTok + outputTok + cacheCrTok + cacheRdTok
 		sa.cost += cost
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterating top sessions rows: %w", err)
+		return nil,
+			fmt.Errorf("iterating top sessions rows: %w", err)
 	}
 
 	result := make([]db.TopSessionEntry, 0, len(order))
 	for _, id := range order {
-		sa, ok := accum[id]
-		if !ok || sa == nil {
+		sa := accum[id]
+		if sa == nil {
 			continue
 		}
 		result = append(result, db.TopSessionEntry{
@@ -715,32 +785,19 @@ WHERE ` + pgUsageMessageEligibility
 func (s *Store) GetUsageSessionCounts(
 	ctx context.Context, f db.UsageFilter,
 ) (db.UsageSessionCounts, error) {
-	query := `
-SELECT
-	s.id,
-	s.project,
-	s.agent,
-	m.claude_message_id,
-	m.claude_request_id,
-	COALESCE(m.timestamp, s.started_at) as ts
-FROM messages m
-JOIN sessions s ON m.session_id = s.id
-WHERE ` + pgUsageMessageEligibility
-
+	query := pgUsageRowSelect()
 	pb := &paramBuilder{}
 	if f.From != "" {
 		padded := paddedUTCBound(f.From+"T00:00:00Z", -14)
-		query += " AND COALESCE(m.timestamp, s.started_at) >= " +
-			pb.add(padded) + "::timestamptz"
+		query += " AND u.ts >= " + pb.add(padded) + "::timestamptz"
 	}
 	if f.To != "" {
 		padded := paddedUTCBound(f.To+"T23:59:59Z", 14)
-		query += " AND COALESCE(m.timestamp, s.started_at) <= " +
-			pb.add(padded) + "::timestamptz"
+		query += " AND u.ts <= " + pb.add(padded) + "::timestamptz"
 	}
-	query, _ = appendPGUsageFilterClauses(query, pb, f)
-	query += ` ORDER BY COALESCE(m.timestamp, s.started_at) ASC,
-		m.session_id ASC, m.ordinal ASC`
+	query, _ = appendPGUsageRowFilterClauses(query, pb, f)
+	query += ` ORDER BY u.ts ASC, u.session_id ASC,
+		COALESCE(u.message_ordinal, -1) ASC`
 
 	rows, err := s.pg.QueryContext(ctx, query, pb.args...)
 	if err != nil {
@@ -750,7 +807,6 @@ WHERE ` + pgUsageMessageEligibility
 	defer rows.Close()
 
 	loc := usageLocation(f)
-
 	type sessInfo struct {
 		project string
 		agent   string
@@ -763,24 +819,14 @@ WHERE ` + pgUsageMessageEligibility
 	seen := make(map[string]sessInfo)
 	dedup := make(map[dedupKey]struct{})
 
-	var (
-		sid     string
-		project string
-		agent   string
-		msgID   string
-		reqID   string
-		ts      sql.NullTime
-	)
 	for rows.Next() {
-		if err := rows.Scan(
-			&sid, &project, &agent,
-			&msgID, &reqID, &ts,
-		); err != nil {
+		r, err := scanPGUsageRow(rows)
+		if err != nil {
 			return db.UsageSessionCounts{},
 				fmt.Errorf("scanning session counts: %w", err)
 		}
 
-		date := usageDate(ts, loc)
+		date := usageDate(r.ts, loc)
 		if f.From != "" && date < f.From {
 			continue
 		}
@@ -788,19 +834,22 @@ WHERE ` + pgUsageMessageEligibility
 			continue
 		}
 
-		if msgID != "" && reqID != "" {
-			key := dedupKey{msgID: msgID, reqID: reqID}
+		if r.claudeMessageID != "" && r.claudeRequestID != "" {
+			key := dedupKey{msgID: r.claudeMessageID, reqID: r.claudeRequestID}
+			if _, dup := dedup[key]; dup {
+				continue
+			}
+			dedup[key] = struct{}{}
+		} else if r.usageDedupKey != "" {
+			key := dedupKey{msgID: "usage", reqID: r.usageDedupKey}
 			if _, dup := dedup[key]; dup {
 				continue
 			}
 			dedup[key] = struct{}{}
 		}
 
-		if _, ok := seen[sid]; !ok {
-			seen[sid] = sessInfo{
-				project: project,
-				agent:   agent,
-			}
+		if _, ok := seen[r.sessionID]; !ok {
+			seen[r.sessionID] = sessInfo{project: r.project, agent: r.agent}
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -817,6 +866,5 @@ WHERE ` + pgUsageMessageEligibility
 		out.ByProject[info.project]++
 		out.ByAgent[info.agent]++
 	}
-
 	return out, nil
 }

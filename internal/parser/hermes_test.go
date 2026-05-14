@@ -158,6 +158,43 @@ func TestParseHermesArchive_StateDBMetadataUsageAndTranscriptChoice(
 	assert.Equal(t, 9, res.UsageEvents[0].ReasoningTokens)
 }
 
+func TestParseHermesArchive_FallsBackToTranscriptsWhenStateDBUnreadable(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	sessionsDir := filepath.Join(root, "sessions")
+	require.NoError(t, os.MkdirAll(sessionsDir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(root, "state.db"),
+		[]byte("not sqlite"),
+		0o644,
+	))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(sessionsDir, "session_child.json"),
+		[]byte(`{
+			"platform":"discord",
+			"session_start":"2026-05-14T10:00:00Z",
+			"last_updated":"2026-05-14T10:20:00Z",
+			"messages":[
+				{"role":"user","content":"hello from transcript","timestamp":"2026-05-14T10:01:00Z"},
+				{"role":"assistant","content":"reply from transcript","timestamp":"2026-05-14T10:02:00Z"}
+			]
+		}`),
+		0o644,
+	))
+
+	results, err := ParseHermesArchive(root, "", "local")
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+
+	res := results[0]
+	assert.Equal(t, "hermes:child", res.Session.ID)
+	assert.Equal(t, "hermes-discord", res.Session.Project)
+	assert.Equal(t, "hello from transcript", res.Session.FirstMessage)
+	assert.Len(t, res.Messages, 2)
+	assert.Empty(t, res.UsageEvents)
+}
+
 func TestParseHermesSession_CompactionBoundaryIsSystem(t *testing.T) {
 	sess, msgs := runHermesJSONTest(t, "", `{
 		"platform":"darwin",

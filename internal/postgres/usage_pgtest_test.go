@@ -264,6 +264,107 @@ func TestStoreGetUsageSessionCountsDedupesClaudeKeys(t *testing.T) {
 	}
 }
 
+func TestPostgresUsageQueriesUnionUsageEvents(t *testing.T) {
+	_, store := prepareUsageSchema(t, "agentsview_usage_events_union_test")
+
+	ctx := context.Background()
+	_, err := store.DB().ExecContext(ctx, `
+		INSERT INTO model_pricing (
+			model_pattern, input_per_mtok, output_per_mtok,
+			cache_creation_per_mtok, cache_read_per_mtok, updated_at
+		) VALUES
+			('claude-sonnet-4-20250514', 1, 1, 1, 1, 'seed'),
+			('gpt-5.4', 1, 1, 1, 1, 'seed')`)
+	if err != nil {
+		t.Fatalf("insert pricing: %v", err)
+	}
+	_, err = store.DB().ExecContext(ctx, `
+		INSERT INTO sessions (
+			id, machine, project, agent, started_at,
+			message_count, user_message_count
+		) VALUES
+			('claude-msg', 'test-machine', 'proj-a', 'claude',
+			 '2026-05-14T09:00:00Z'::timestamptz, 1, 1),
+			('hermes-event', 'test-machine', 'proj-b', 'hermes',
+			 '2026-05-14T10:00:00Z'::timestamptz, 1, 1)`)
+	if err != nil {
+		t.Fatalf("insert sessions: %v", err)
+	}
+	_, err = store.DB().ExecContext(ctx, `
+		INSERT INTO messages (
+			session_id, ordinal, role, content, timestamp, content_length,
+			model, token_usage
+		) VALUES
+			('claude-msg', 0, 'assistant', 'one',
+			 '2026-05-14T09:05:00Z'::timestamptz, 3,
+			 'claude-sonnet-4-20250514',
+			 '{"input_tokens":100,"output_tokens":40}')`)
+	if err != nil {
+		t.Fatalf("insert message: %v", err)
+	}
+	_, err = store.DB().ExecContext(ctx, `
+		INSERT INTO usage_events (
+			session_id, source, model, input_tokens, output_tokens,
+			cache_read_input_tokens, occurred_at, dedup_key
+		) VALUES
+			('hermes-event', 'session', 'gpt-5.4', 300, 70, 20,
+			 '2026-05-14T10:05:00Z'::timestamptz, 'session:hermes-event')`)
+	if err != nil {
+		t.Fatalf("insert usage event: %v", err)
+	}
+
+	filter := db.UsageFilter{
+		From:       "2026-05-14",
+		To:         "2026-05-14",
+		Timezone:   "UTC",
+		Breakdowns: true,
+	}
+	result, err := store.GetDailyUsage(ctx, filter)
+	if err != nil {
+		t.Fatalf("GetDailyUsage: %v", err)
+	}
+	if got, want := result.Totals.InputTokens, 400; got != want {
+		t.Fatalf("InputTokens = %d, want %d", got, want)
+	}
+	if got, want := result.Totals.OutputTokens, 110; got != want {
+		t.Fatalf("OutputTokens = %d, want %d", got, want)
+	}
+	if got, want := result.Totals.CacheReadTokens, 20; got != want {
+		t.Fatalf("CacheReadTokens = %d, want %d", got, want)
+	}
+	if got, want := len(result.Daily[0].AgentBreakdowns), 2; got != want {
+		t.Fatalf("AgentBreakdowns len = %d, want %d", got, want)
+	}
+
+	top, err := store.GetTopSessionsByCost(ctx, filter, 10)
+	if err != nil {
+		t.Fatalf("GetTopSessionsByCost: %v", err)
+	}
+	if got, want := len(top), 2; got != want {
+		t.Fatalf("top len = %d, want %d", got, want)
+	}
+	if got, want := top[0].SessionID, "hermes-event"; got != want {
+		t.Fatalf("top[0].SessionID = %q, want %q", got, want)
+	}
+	if got, want := top[0].TotalTokens, 390; got != want {
+		t.Fatalf("top[0].TotalTokens = %d, want %d", got, want)
+	}
+
+	counts, err := store.GetUsageSessionCounts(ctx, filter)
+	if err != nil {
+		t.Fatalf("GetUsageSessionCounts: %v", err)
+	}
+	if got, want := counts.Total, 2; got != want {
+		t.Fatalf("Total = %d, want %d", got, want)
+	}
+	if got, want := counts.ByAgent["hermes"], 1; got != want {
+		t.Fatalf("ByAgent[hermes] = %d, want %d", got, want)
+	}
+	if got, want := counts.ByProject["proj-b"], 1; got != want {
+		t.Fatalf("ByProject[proj-b] = %d, want %d", got, want)
+	}
+}
+
 func TestPushSyncsModelPricingToPostgres(t *testing.T) {
 	pgURL := testPGURL(t)
 	cleanPGSchema(t, pgURL)
