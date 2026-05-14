@@ -37,6 +37,7 @@ struct SidecarState {
     child: Mutex<Option<SidecarProcess>>,
     backend_port: Mutex<Option<u16>>,
     active_generation: Mutex<Option<u64>>,
+    stopping_generation: Mutex<Option<u64>>,
     terminated_generation: Mutex<u64>,
     termination: Condvar,
     next_generation: AtomicU64,
@@ -553,6 +554,9 @@ fn save_sidecar(app: &AppHandle, child: CommandChild) -> Result<u64, DynError> {
     if let Ok(mut active_generation) = state.active_generation.lock() {
         *active_generation = Some(generation);
     }
+    if let Ok(mut stopping_generation) = state.stopping_generation.lock() {
+        *stopping_generation = None;
+    }
     Ok(generation)
 }
 
@@ -581,6 +585,7 @@ fn handle_sidecar_terminated(
         set_sidecar_port(state, None);
     }
     clear_sidecar_child_if_current(state, generation);
+    clear_stopping_generation_if_current(state, generation);
     record_sidecar_terminated(state, generation);
     !startup_handled.swap(true, Ordering::SeqCst)
 }
@@ -605,6 +610,29 @@ fn clear_sidecar_child_if_current(state: &SidecarState, generation: u64) {
         .map(|process| process.generation)
         .is_some_and(|active_generation| active_generation == generation)
     {
+        *guard = None;
+    }
+}
+
+fn mark_sidecar_stopping(state: &SidecarState, generation: u64) {
+    if let Ok(mut guard) = state.stopping_generation.lock() {
+        *guard = Some(generation);
+    }
+}
+
+fn current_stopping_generation(state: &SidecarState) -> Option<u64> {
+    state
+        .stopping_generation
+        .lock()
+        .ok()
+        .and_then(|guard| *guard)
+}
+
+fn clear_stopping_generation_if_current(state: &SidecarState, generation: u64) {
+    let Ok(mut guard) = state.stopping_generation.lock() else {
+        return;
+    };
+    if *guard == Some(generation) {
         *guard = None;
     }
 }
@@ -1135,22 +1163,28 @@ fn stop_backend_inner(app: &AppHandle, wait_timeout: Option<Duration>) -> bool {
             guard.take()
         };
         let Some(process) = process else {
+            if let Some(generation) = current_stopping_generation(&state) {
+                return finish_backend_stop_wait(
+                    app,
+                    &state,
+                    generation,
+                    wait_for_sidecar_termination(&state, generation, timeout),
+                );
+            }
             clear_sidecar_port(app);
             return true;
         };
         let generation = process.generation;
+        mark_sidecar_stopping(&state, generation);
         if let Err(err) = process.child.kill() {
             eprintln!("[agentsview] failed to stop sidecar: {err}");
         }
-        let terminated = wait_for_sidecar_termination(&state, generation, timeout);
-        if terminated {
-            let _ = mark_sidecar_inactive_if_current(&state, generation);
-            clear_sidecar_child_if_current(&state, generation);
-            clear_sidecar_port(app);
-        } else {
-            eprintln!("[agentsview] timed out waiting for sidecar to stop before update install");
-        }
-        return terminated;
+        return finish_backend_stop_wait(
+            app,
+            &state,
+            generation,
+            wait_for_sidecar_termination(&state, generation, timeout),
+        );
     }
 
     let process = {
@@ -1172,6 +1206,23 @@ fn stop_backend_inner(app: &AppHandle, wait_timeout: Option<Duration>) -> bool {
     }
     clear_sidecar_port(app);
     true
+}
+
+fn finish_backend_stop_wait(
+    app: &AppHandle,
+    state: &SidecarState,
+    generation: u64,
+    terminated: bool,
+) -> bool {
+    if terminated {
+        let _ = mark_sidecar_inactive_if_current(state, generation);
+        clear_sidecar_child_if_current(state, generation);
+        clear_stopping_generation_if_current(state, generation);
+        clear_sidecar_port(app);
+    } else {
+        eprintln!("[agentsview] timed out waiting for sidecar to stop before update install");
+    }
+    terminated
 }
 
 fn restart_backend_after_update_failure(handle: &AppHandle) {
@@ -1415,6 +1466,10 @@ mod tests {
             .active_generation
             .lock()
             .expect("lock active_generation") = Some(1);
+        *state
+            .stopping_generation
+            .lock()
+            .expect("lock stopping_generation") = Some(1);
         let startup_handled = AtomicBool::new(false);
 
         assert!(handle_sidecar_terminated(&state, &startup_handled, 1));
@@ -1427,6 +1482,14 @@ mod tests {
             None
         );
         assert!(startup_handled.load(Ordering::SeqCst));
+        assert_eq!(
+            state
+                .stopping_generation
+                .lock()
+                .expect("lock stopping_generation after terminated")
+                .to_owned(),
+            None
+        );
 
         // Termination handling is idempotent for state and should only
         // report first-time transition once.
