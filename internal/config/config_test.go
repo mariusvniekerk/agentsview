@@ -72,6 +72,32 @@ func loadConfigFromPFlags(t *testing.T, args ...string) (Config, error) {
 	return LoadPFlags(fs)
 }
 
+func TestLoadMinimal_LoadsAgentBinaryConfig(t *testing.T) {
+	dir := setupTestEnv(t)
+	path := filepath.Join(dir, configFileName)
+	data := []byte(`[agent.claude]
+binary = "/opt/agents/claude"
+
+[agent.gemini]
+binary = "/usr/local/bin/gemini"
+`)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := LoadMinimal()
+	if err != nil {
+		t.Fatalf("LoadMinimal: %v", err)
+	}
+
+	if cfg.Agent["claude"].Binary != "/opt/agents/claude" {
+		t.Fatalf("claude binary = %q", cfg.Agent["claude"].Binary)
+	}
+	if cfg.Agent["gemini"].Binary != "/usr/local/bin/gemini" {
+		t.Fatalf("gemini binary = %q", cfg.Agent["gemini"].Binary)
+	}
+}
+
 func TestDefault_IncludesCodexArchivedSessionsDir(t *testing.T) {
 	cfg, err := Default()
 	if err != nil {

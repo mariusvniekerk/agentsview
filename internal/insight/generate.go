@@ -71,6 +71,16 @@ type GenerateStreamFunc func(
 	ctx context.Context, agent, prompt string, onLog LogFunc,
 ) (Result, error)
 
+// AgentConfig holds insight generation overrides for one agent.
+type AgentConfig struct {
+	Binary string
+}
+
+// GenerateOptions holds optional insight generation overrides.
+type GenerateOptions struct {
+	Agents map[string]AgentConfig
+}
+
 // Generate invokes an AI agent CLI to generate an insight.
 // The agent parameter selects which CLI to use (claude,
 // codex, gemini). The prompt is passed via stdin.
@@ -85,13 +95,24 @@ func Generate(
 func GenerateStream(
 	ctx context.Context, agent, prompt string, onLog LogFunc,
 ) (Result, error) {
+	return GenerateStreamWithOptions(
+		ctx, agent, prompt, onLog, GenerateOptions{},
+	)
+}
+
+// GenerateStreamWithOptions invokes an AI agent CLI to generate an
+// insight, using configured binary paths before falling back to PATH.
+func GenerateStreamWithOptions(
+	ctx context.Context, agent, prompt string, onLog LogFunc,
+	opts GenerateOptions,
+) (Result, error) {
 	if !ValidAgents[agent] {
 		return Result{}, fmt.Errorf(
 			"unsupported agent: %s", agent,
 		)
 	}
 
-	path, err := exec.LookPath(agentBinary(agent))
+	path, err := resolveAgentBinary(agent, opts)
 	if err != nil {
 		return Result{}, fmt.Errorf(
 			"%s CLI not found: %w", agent, err,
@@ -110,6 +131,13 @@ func GenerateStream(
 	default:
 		return generateClaude(ctx, path, prompt, onLog)
 	}
+}
+
+func resolveAgentBinary(agent string, opts GenerateOptions) (string, error) {
+	if cfg, ok := opts.Agents[agent]; ok && strings.TrimSpace(cfg.Binary) != "" {
+		return strings.TrimSpace(cfg.Binary), nil
+	}
+	return exec.LookPath(agentBinary(agent))
 }
 
 // agentEnv returns the current environment with

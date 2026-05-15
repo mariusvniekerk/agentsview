@@ -92,14 +92,24 @@ func New(
 	}
 
 	s := &Server{
-		cfg:                cfg,
-		db:                 database,
-		engine:             engine,
-		sessions:           sessions,
-		mux:                http.NewServeMux(),
-		generateStreamFunc: insight.GenerateStream,
-		spaFS:              dist,
-		spaHandler:         http.FileServerFS(dist),
+		cfg:      cfg,
+		db:       database,
+		engine:   engine,
+		sessions: sessions,
+		mux:      http.NewServeMux(),
+		generateStreamFunc: func(
+			ctx context.Context, agent, prompt string,
+			onLog insight.LogFunc,
+		) (insight.Result, error) {
+			return insight.GenerateStreamWithOptions(
+				ctx, agent, prompt, onLog,
+				insight.GenerateOptions{
+					Agents: insightAgentConfig(cfg.Agent),
+				},
+			)
+		},
+		spaFS:      dist,
+		spaHandler: http.FileServerFS(dist),
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -110,6 +120,19 @@ func New(
 
 // Option configures a Server.
 type Option func(*Server)
+
+func insightAgentConfig(
+	cfg map[string]config.AgentConfig,
+) map[string]insight.AgentConfig {
+	if len(cfg) == 0 {
+		return nil
+	}
+	agents := make(map[string]insight.AgentConfig, len(cfg))
+	for name, agentCfg := range cfg {
+		agents[name] = insight.AgentConfig{Binary: agentCfg.Binary}
+	}
+	return agents
+}
 
 // WithVersion sets the build-time version metadata.
 func WithVersion(v VersionInfo) Option {

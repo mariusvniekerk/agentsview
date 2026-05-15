@@ -73,6 +73,11 @@ type AutomatedConfig struct {
 	Prefixes []string `toml:"prefixes" json:"prefixes,omitempty"`
 }
 
+// AgentConfig holds per-agent runtime overrides.
+type AgentConfig struct {
+	Binary string `json:"binary,omitempty" toml:"binary"`
+}
+
 type CustomModelRate struct {
 	Input         float64 `json:"input" toml:"input"`
 	Output        float64 `json:"output" toml:"output"`
@@ -82,25 +87,26 @@ type CustomModelRate struct {
 
 // Config holds all application configuration.
 type Config struct {
-	Host                 string          `json:"host" toml:"host"`
-	Port                 int             `json:"port" toml:"port"`
-	DataDir              string          `json:"data_dir" toml:"data_dir"`
-	DBPath               string          `json:"-" toml:"-"`
-	PublicURL            string          `json:"public_url,omitempty" toml:"public_url"`
-	PublicOrigins        []string        `json:"public_origins,omitempty" toml:"public_origins"`
-	Proxy                ProxyConfig     `json:"proxy,omitempty" toml:"proxy"`
-	WatchExcludePatterns []string        `json:"watch_exclude_patterns,omitempty" toml:"watch_exclude_patterns"`
-	CursorSecret         string          `json:"cursor_secret" toml:"cursor_secret"`
-	GithubToken          string          `json:"github_token,omitempty" toml:"github_token"`
-	Terminal             TerminalConfig  `json:"terminal,omitempty" toml:"terminal"`
-	AuthToken            string          `json:"auth_token,omitempty" toml:"auth_token"`
-	RequireAuth          bool            `json:"require_auth" toml:"require_auth"`
-	NoBrowser            bool            `json:"no_browser" toml:"no_browser"`
-	DisableUpdateCheck   bool            `json:"disable_update_check" toml:"disable_update_check"`
-	NoSync               bool            `json:"-" toml:"-"`
-	PG                   PGConfig        `json:"pg,omitempty" toml:"pg"`
-	Automated            AutomatedConfig `json:"automated,omitempty" toml:"automated"`
-	WriteTimeout         time.Duration   `json:"-" toml:"-"`
+	Host                 string                 `json:"host" toml:"host"`
+	Port                 int                    `json:"port" toml:"port"`
+	DataDir              string                 `json:"data_dir" toml:"data_dir"`
+	DBPath               string                 `json:"-" toml:"-"`
+	PublicURL            string                 `json:"public_url,omitempty" toml:"public_url"`
+	PublicOrigins        []string               `json:"public_origins,omitempty" toml:"public_origins"`
+	Proxy                ProxyConfig            `json:"proxy,omitempty" toml:"proxy"`
+	WatchExcludePatterns []string               `json:"watch_exclude_patterns,omitempty" toml:"watch_exclude_patterns"`
+	CursorSecret         string                 `json:"cursor_secret" toml:"cursor_secret"`
+	GithubToken          string                 `json:"github_token,omitempty" toml:"github_token"`
+	Terminal             TerminalConfig         `json:"terminal,omitempty" toml:"terminal"`
+	AuthToken            string                 `json:"auth_token,omitempty" toml:"auth_token"`
+	RequireAuth          bool                   `json:"require_auth" toml:"require_auth"`
+	NoBrowser            bool                   `json:"no_browser" toml:"no_browser"`
+	DisableUpdateCheck   bool                   `json:"disable_update_check" toml:"disable_update_check"`
+	NoSync               bool                   `json:"-" toml:"-"`
+	PG                   PGConfig               `json:"pg,omitempty" toml:"pg"`
+	Automated            AutomatedConfig        `json:"automated,omitempty" toml:"automated"`
+	Agent                map[string]AgentConfig `json:"agent,omitempty" toml:"agent"`
+	WriteTimeout         time.Duration          `json:"-" toml:"-"`
 
 	// AgentDirs maps each AgentType to its configured
 	// directories. Single-dir agents store a one-element
@@ -184,6 +190,7 @@ func Default() (Config, error) {
 		WatchExcludePatterns:           []string{".git", "node_modules", "__pycache__", ".venv", "venv", "vendor", ".next"},
 		ResultContentBlockedCategories: []string{"Read", "Glob"},
 		EventsCoalesceInterval:         10 * time.Second,
+		Agent:                          map[string]AgentConfig{},
 	}, nil
 }
 
@@ -365,6 +372,7 @@ func (c *Config) loadFile() error {
 		DisableUpdateCheck             bool                       `toml:"disable_update_check"`
 		PG                             PGConfig                   `toml:"pg"`
 		Automated                      AutomatedConfig            `toml:"automated"`
+		Agent                          map[string]AgentConfig     `toml:"agent"`
 		EventsCoalesceInterval         time.Duration              `toml:"events_coalesce_interval"`
 		CustomModelPricing             map[string]CustomModelRate `toml:"custom_model_pricing"`
 	}
@@ -432,6 +440,19 @@ func (c *Config) loadFile() error {
 	}
 	if file.Automated.Prefixes != nil {
 		c.Automated.Prefixes = file.Automated.Prefixes
+	}
+	if len(file.Agent) > 0 {
+		if c.Agent == nil {
+			c.Agent = map[string]AgentConfig{}
+		}
+		for name, cfg := range file.Agent {
+			name = strings.TrimSpace(strings.ToLower(name))
+			if name == "" {
+				continue
+			}
+			cfg.Binary = strings.TrimSpace(cfg.Binary)
+			c.Agent[name] = cfg
+		}
 	}
 	if len(file.CustomModelPricing) > 0 {
 		c.CustomModelPricing = file.CustomModelPricing

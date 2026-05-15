@@ -267,6 +267,31 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
+func TestGenerateStreamWithOptions_UsesConfiguredBinary(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script test not supported on windows")
+	}
+
+	stdout := `[{"type":"result","result":"OK","modelUsage":{"m1":{}}}]`
+	bin, _ := createMockBinary(t, stdout, 0, false, "custom-claude")
+	t.Setenv("PATH", "/bin:/usr/bin")
+
+	result, err := GenerateStreamWithOptions(
+		context.Background(), "claude", "test prompt", nil,
+		GenerateOptions{
+			Agents: map[string]AgentConfig{
+				"claude": {Binary: bin},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("GenerateStreamWithOptions: %v", err)
+	}
+	if result.Content != "OK" {
+		t.Fatalf("Content = %q, want OK", result.Content)
+	}
+}
+
 func TestGenerateClaude_CLIFlags(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell script test not supported on windows")
