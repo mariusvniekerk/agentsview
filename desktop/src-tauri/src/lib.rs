@@ -1318,6 +1318,8 @@ fn stop_backend_inner(app: &AppHandle, wait_timeout: Option<Duration>) -> bool {
     };
     if let Some(process) = process.as_ref() {
         let _ = mark_sidecar_inactive_if_current(&state, process.generation);
+        clear_restart_after_stop_timeout_if_current(&state, process.generation);
+        clear_stopping_generation_if_current(&state, process.generation);
     }
 
     if let Some(process) = process {
