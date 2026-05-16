@@ -144,12 +144,30 @@ func (db *DB) UsageEventFingerprints(
 	if len(sessionIDs) == 0 {
 		return out, nil
 	}
+	for _, id := range sessionIDs {
+		out[id] = ""
+	}
+
+	const batchSize = 900
+	for start := 0; start < len(sessionIDs); start += batchSize {
+		end := min(start+batchSize, len(sessionIDs))
+		if err := db.appendUsageEventFingerprints(
+			out, sessionIDs[start:end],
+		); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+func (db *DB) appendUsageEventFingerprints(
+	out map[string]string, sessionIDs []string,
+) error {
 	placeholders := make([]string, len(sessionIDs))
 	args := make([]any, len(sessionIDs))
 	for i, id := range sessionIDs {
 		placeholders[i] = "?"
 		args[i] = id
-		out[id] = ""
 	}
 	rows, err := db.getReader().Query(`
 		SELECT session_id, message_ordinal, source, model,
@@ -163,7 +181,7 @@ func (db *DB) UsageEventFingerprints(
 		args...,
 	)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer rows.Close()
 
@@ -184,12 +202,16 @@ func (db *DB) UsageEventFingerprints(
 			&reasoningTokens, &cost, &costStatus, &costSource,
 			&occurredAt, &dedupKey,
 		); err != nil {
-			return nil, err
+			return err
 		}
 		b := builders[sessionID]
 		if b == nil {
 			b = &strings.Builder{}
 			builders[sessionID] = b
+		}
+		occurred := ""
+		if occurredAt.Valid {
+			occurred = occurredAt.String
 		}
 		fmt.Fprintf(b,
 			"%t|%d|%d:%s|%d:%s|%d|%d|%d|%d|%d|%t|%g|%d:%s|%d:%s|%d:%s|%d:%s;",
@@ -206,17 +228,17 @@ func (db *DB) UsageEventFingerprints(
 			cost.Float64,
 			len(costStatus), costStatus,
 			len(costSource), costSource,
-			len(occurredAt.String), occurredAt.String,
+			len(occurred), occurred,
 			len(dedupKey.String), dedupKey.String,
 		)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return err
 	}
 	for id, b := range builders {
-		out[id] = b.String()
+		out[id] += b.String()
 	}
-	return out, nil
+	return nil
 }
 
 // UsageEventFingerprint returns exact ordered fingerprint for one session.
