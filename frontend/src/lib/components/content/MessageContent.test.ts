@@ -143,9 +143,11 @@ describe("MessageContent", () => {
 
     await tick();
     const copyButton = document.querySelector<HTMLButtonElement>(
-      'button[aria-label="Copy code block"]',
+      'button.copy-btn[aria-label="Copy code block"]',
     );
     expect(copyButton).not.toBeNull();
+    expect(copyButton!.querySelector("svg")).not.toBeNull();
+    expect(copyButton!.textContent?.trim()).toBe("");
 
     copyButton!.click();
     await Promise.resolve();
@@ -155,7 +157,8 @@ describe("MessageContent", () => {
     expect(copyButton!.getAttribute("aria-label")).toBe(
       "Copied code block",
     );
-    expect(copyButton!.textContent?.trim()).toBe("Copied");
+    expect(copyButton!.querySelector("svg")).not.toBeNull();
+    expect(copyButton!.textContent?.trim()).toBe("");
 
     unmount(component);
   });

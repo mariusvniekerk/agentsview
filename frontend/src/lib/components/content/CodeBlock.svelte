@@ -2,6 +2,7 @@
   import { onDestroy } from "svelte";
   import { copyToClipboard } from "../../utils/clipboard.js";
   import { applyHighlight, escapeHTML } from "../../utils/highlight.js";
+  import CopyButton from "../shared/CopyButton.svelte";
 
   interface Props {
     content: string;
@@ -31,15 +32,15 @@
 </script>
 
 <div class="code-block">
-  <button
-    class="copy-code"
-    type="button"
-    aria-label={copied ? "Copied code block" : "Copy code block"}
-    title={copied ? "Copied" : "Copy code"}
+  <CopyButton
+    class="code-copy"
+    {copied}
+    ariaLabel="Copy code block"
+    copiedAriaLabel="Copied code block"
+    title="Copy code"
+    copiedTitle="Copied!"
     onclick={handleCopy}
-  >
-    {copied ? "Copied" : "Copy"}
-  </button>
+  />
   {#if language}
     <div class="code-lang">{language}</div>
   {/if}
@@ -58,38 +59,15 @@
     overflow: hidden;
   }
 
-  .copy-code {
+  :global(.code-copy.copy-btn) {
     position: absolute;
     top: 6px;
     right: 6px;
     z-index: 1;
-    padding: 3px 8px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: var(--radius-sm);
-    background: rgba(15, 23, 42, 0.88);
-    color: var(--code-text);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    line-height: 1.4;
-    opacity: 0;
-    transform: translateY(-2px);
-    transition:
-      opacity 120ms ease,
-      transform 120ms ease,
-      border-color 120ms ease;
   }
 
-  .copy-code:hover,
-  .copy-code:focus-visible,
-  .code-block:hover .copy-code,
-  .code-block:focus-within .copy-code {
+  .code-block:hover :global(.code-copy.copy-btn) {
     opacity: 1;
-    transform: translateY(0);
-  }
-
-  .copy-code:hover,
-  .copy-code:focus-visible {
-    border-color: rgba(255, 255, 255, 0.28);
   }
 
   .code-lang {
