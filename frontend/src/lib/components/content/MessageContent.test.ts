@@ -5,6 +5,10 @@ import type { Message } from "../../api/types.js";
 // @ts-ignore
 import MessageContent from "./MessageContent.svelte";
 
+const copyToClipboardMock = vi.hoisted(() =>
+  vi.fn().mockResolvedValue(true),
+);
+
 vi.mock("../../stores/messages.svelte.js", () => ({
   messages: {
     sessionId: "",
@@ -32,12 +36,18 @@ vi.mock("../../stores/sessions.svelte.js", () => ({
   },
 }));
 
-vi.mock("../../utils/highlight.js", () => ({
-  applyHighlight: () => {},
-}));
+vi.mock("../../utils/highlight.js", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../utils/highlight.js")
+  >("../../utils/highlight.js");
+  return {
+    ...actual,
+    applyHighlight: () => {},
+  };
+});
 
 vi.mock("../../utils/clipboard.js", () => ({
-  copyToClipboard: vi.fn().mockResolvedValue(true),
+  copyToClipboard: copyToClipboardMock,
 }));
 
 type MessageWithTokenFlags = Message & {
@@ -70,6 +80,7 @@ function makeMessage(
 
 afterEach(() => {
   document.body.innerHTML = "";
+  vi.clearAllMocks();
 });
 
 describe("MessageContent", () => {
@@ -113,6 +124,38 @@ describe("MessageContent", () => {
     expect(tokenMeta?.textContent?.replace(/\s+/g, " ").trim()).toBe(
       "— ctx / 180 out",
     );
+
+    unmount(component);
+  });
+
+  it("copies the exact raw content from a fenced code block", async () => {
+    const code = "const answer = 42;\n";
+    const content = `Here is code:\n\n\`\`\`ts\n${code}\`\`\``;
+    const component = mount(MessageContent, {
+      target: document.body,
+      props: {
+        message: makeMessage({
+          content,
+          content_length: content.length,
+        }),
+      },
+    });
+
+    await tick();
+    const copyButton = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Copy code block"]',
+    );
+    expect(copyButton).not.toBeNull();
+
+    copyButton!.click();
+    await Promise.resolve();
+    await tick();
+
+    expect(copyToClipboardMock).toHaveBeenCalledWith(code);
+    expect(copyButton!.getAttribute("aria-label")).toBe(
+      "Copied code block",
+    );
+    expect(copyButton!.textContent?.trim()).toBe("Copied");
 
     unmount(component);
   });
